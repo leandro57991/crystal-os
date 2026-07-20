@@ -1,0 +1,122 @@
+/* =========================================================
+   Crystal OS — mobile.css
+   Responsive overrides; worker report screen is mobile-first
+   ========================================================= */
+
+/* ── WORKER REPORT — full mobile view ─────────────────── */
+
+.worker-report-view {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+.worker-report-view .page-title { font-size: 20px; }
+
+.field-big .form-input,
+.field-big .form-select,
+.field-big .form-textarea {
+  padding: 14px 16px;
+  font-size: 16px;
+  border-radius: 10px;
+}
+.field-big .form-label { font-size: 13px; letter-spacing: 0; text-transform: none; }
+
+.time-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.time-row .form-input { text-align: center; font-size: 22px; font-weight: 700; color: var(--green-main); padding: 16px; }
+
+.btn-send-report {
+  width: 100%;
+  padding: 18px;
+  font-size: 18px;
+  font-weight: 700;
+  background: var(--green-mid);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 4px 16px rgba(39,174,96,0.35);
+}
+.btn-send-report:hover { background: var(--green-main); }
+.btn-send-report:active { transform: scale(0.98); }
+
+.material-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-bottom: 8px;
+}
+.material-row .form-input { padding: 10px 12px; }
+.btn-remove-material {
+  background: none;
+  border: none;
+  color: var(--danger);
+  padding: 10px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── RESPONSIVE BREAKPOINTS ─────────────────────────── */
+
+@media (max-width: 1024px) {
+  :root { --sidebar-w: 0px; }
+
+  #sidebar {
+    transform: translateX(-260px);
+    width: 260px;
+  }
+  #sidebar.open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.2);
+  }
+  #sidebar-overlay.open { display: block; }
+
+  #header {
+    left: 0;
+  }
+  #header .hamburger { display: flex; }
+
+  #content-area {
+    margin-left: 0;
+    padding: 20px 16px;
+  }
+
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .form-row, .form-row-3 { grid-template-columns: 1fr; }
+  .stats-row { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .kpi-grid  { grid-template-columns: 1fr; }
+  .page-header { flex-direction: column; align-items: flex-start; }
+  .page-actions { width: 100%; }
+  .info-grid { grid-template-columns: 1fr; }
+
+  .modal { max-width: 100%; margin: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .modal-overlay { align-items: flex-end; padding: 0; }
+
+  .bar-chart { height: 120px; }
+
+  .login-card { padding: 32px 24px 24px; }
+  .login-logo-box { width: 80px; height: 80px; }
+  .login-logo-box img { width: 72px; height: 72px; }
+
+  .card { padding: 16px; }
+  #content-area { padding: 16px 12px; }
+}
+
+/* ── PRINT ─────────────────────────────────────────── */
+
+@media print {
+  #sidebar, #header, .page-actions, .btn, .filter-bar, .no-print { display: none !important; }
+  #content-area { margin: 0; padding: 0; }
+  .card { box-shadow: none; border: 1px solid #ccc; }
+  body { background: white; }
+}

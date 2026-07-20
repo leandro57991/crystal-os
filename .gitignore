@@ -1,0 +1,8 @@
+# Archivos del servidor local (no necesarios en la nube)
+serve.ps1
+
+# Archivos temporales
+*.tmp
+*.log
+Thumbs.db
+.DS_Store
