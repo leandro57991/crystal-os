@@ -2,8 +2,10 @@
   "name": "Crystal OS",
   "short_name": "CrystalOS",
   "description": "Sistema de gestión remota para Crystal Services",
-  "start_url": "index.html",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#1F7A3C",
   "theme_color": "#1F7A3C",
   "icons": [
