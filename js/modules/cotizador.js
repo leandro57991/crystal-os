@@ -382,6 +382,38 @@ Router.register('nueva-cotizacion', async (view, params) => {
       </div>
     </div>
 
+    <!-- ══ PANEL ASISTENTE IA ══════════════════════════════════ -->
+    <div class="card" id="asistente-card" style="margin-bottom:20px;border:2px solid var(--green-mid);background:linear-gradient(135deg,#f0fdf4,#ffffff);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:0;">
+        <div style="background:var(--green-main);color:white;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;letter-spacing:0.3px;flex-shrink:0;">
+          ✦ Asistente
+        </div>
+        <span style="font-size:13px;color:var(--text-gray);flex:1;">
+          Pega la conversación de WhatsApp para sugerir precios automáticamente
+        </span>
+        <button class="btn btn-ghost btn-sm" id="btn-toggle-asistente" onclick="window._toggleAsistente()" style="flex-shrink:0;">
+          Ocultar
+        </button>
+      </div>
+
+      <div id="asistente-panel" style="margin-top:14px;">
+        <textarea id="wa-texto" class="form-textarea"
+          placeholder="Pega aquí la conversación completa de WhatsApp con el cliente…&#10;&#10;Ejemplo:&#10;— Hola buenos días, quería cotizar una puerta de vidrio corrediza para la sala&#10;— ¿Qué medidas tiene el vano? ¿ancho x alto?&#10;— Aproximadamente 2 metros de ancho por 2.10 de alto"
+          style="min-height:130px;font-size:13px;resize:vertical;"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="window._analizarConversacion()">
+            Analizar y sugerir precios
+          </button>
+          <button class="btn btn-ghost" onclick="document.getElementById('wa-texto').value='';document.getElementById('asistente-resultado').innerHTML=''">
+            Limpiar
+          </button>
+          <span id="asistente-db-info" style="font-size:11px;color:var(--text-gray);align-self:center;"></span>
+        </div>
+        <div id="asistente-resultado" style="margin-top:12px;"></div>
+      </div>
+    </div>
+    <!-- ══ FIN PANEL ASISTENTE ════════════════════════════════ -->
+
     <div style="display:grid;grid-template-columns:1fr 2fr;gap:20px;align-items:start;" id="cotiz-grid">
       <!-- Datos del cliente -->
       <div class="card">
@@ -544,6 +576,60 @@ Router.register('nueva-cotizacion', async (view, params) => {
     s.textContent = '@media(max-width:900px){#cotiz-grid{grid-template-columns:1fr!important}}';
     document.head.appendChild(s);
   }
+
+  /* ── ASISTENTE IA ─────────────────────────────────────── */
+
+  window._toggleAsistente = () => {
+    const panel = document.getElementById('asistente-panel');
+    const btn   = document.getElementById('btn-toggle-asistente');
+    const hidden = panel.style.display === 'none';
+    panel.style.display = hidden ? '' : 'none';
+    btn.textContent = hidden ? 'Ocultar' : 'Mostrar';
+  };
+
+  window._analizarConversacion = async () => {
+    const texto = (document.getElementById('wa-texto')?.value || '').trim();
+    if (!texto) { UI.toast('Pega una conversación de WhatsApp primero', 'warning'); return; }
+
+    const resultDiv = document.getElementById('asistente-resultado');
+    resultDiv.innerHTML = `<div style="color:var(--text-gray);font-size:13px;padding:8px 0;">
+      <span style="display:inline-block;animation:spin 1s linear infinite;">⏳</span> Buscando en historial de cotizaciones…
+    </div>`;
+
+    await Asistente.analizar(texto, (resultado) => {
+      // Mostrar info de la base de datos
+      const dbInfo = document.getElementById('asistente-db-info');
+      if (dbInfo) dbInfo.textContent = `Base: ${resultado.dbSize} cotizaciones`;
+
+      Asistente.renderResultado(resultDiv, resultado, null);
+    });
+  };
+
+  window._asistentePrecio = (precio, ancho, alto, desc) => {
+    // Auto-llenar la primera línea vacía del formulario
+    if (lineas.length === 0) {
+      lineas.push({ tipo:'manual', descripcion:'', ancho:'', alto:'', m2:'', precio:'', total:'', unidad:'m²' });
+    }
+    const idx = lineas.length - 1;
+    if (precio > 0) lineas[idx].precio = precio;
+    if (ancho > 0)  lineas[idx].ancho = ancho;
+    if (alto > 0)   lineas[idx].alto  = alto;
+    if (desc)       { lineas[idx].descripcion = desc; lineas[idx].tipo = 'manual'; }
+    if (ancho > 0 && alto > 0) {
+      lineas[idx].unidad = 'm²';
+      lineas[idx] = calcLinea(lineas[idx]);
+    }
+    renderLineas();
+    UI.toast('Precio y medidas aplicados a la cotización', 'success');
+    // Scroll hacia el formulario
+    document.getElementById('cotiz-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // Precargar la base de datos de precios en segundo plano
+  Asistente.cargarDB().then(db => {
+    const el = document.getElementById('asistente-db-info');
+    if (el) el.textContent = db.length > 0 ? `Base: ${db.length} cotizaciones` : 'Procesando historial…';
+  });
 
   window.guardar = guardar;
   window.refreshTotals = refreshTotals;
