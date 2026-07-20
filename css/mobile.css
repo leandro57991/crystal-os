@@ -63,7 +63,7 @@
   flex-shrink: 0;
 }
 
-/* ── RESPONSIVE BREAKPOINTS ─────────────────────────── */
+/* ── TABLET (1024px) ─────────────────────────────────── */
 
 @media (max-width: 1024px) {
   :root { --sidebar-w: 0px; }
@@ -71,6 +71,7 @@
   #sidebar {
     transform: translateX(-260px);
     width: 260px;
+    z-index: 200;
   }
   #sidebar.open {
     transform: translateX(0);
@@ -80,6 +81,7 @@
 
   #header {
     left: 0;
+    padding: 0 16px;
   }
   #header .hamburger { display: flex; }
 
@@ -90,26 +92,185 @@
 
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .form-row, .form-row-3 { grid-template-columns: 1fr; }
-  .stats-row { grid-template-columns: 1fr; }
 }
 
+/* ── MÓVIL (640px) ───────────────────────────────────── */
+
 @media (max-width: 640px) {
+  /* Header más compacto */
+  :root { --header-h: 56px; }
+
+  #header {
+    padding: 0 10px;
+    gap: 6px;
+  }
+
+  /* Breadcrumb no desborde */
+  .breadcrumb {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .breadcrumb > span:first-child {
+    display: none; /* Ocultar "Crystal OS >" en celular */
+  }
+  .breadcrumb > svg:first-of-type {
+    display: none;
+  }
+  .breadcrumb .crumb-current {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+  }
+
+  /* Área de contenido */
+  #content-area { padding: 12px 10px; }
+
+  /* Cards con menos padding */
+  .card {
+    padding: 14px;
+    min-width: 0;  /* Permite que la card se encoja en grid sin expandir la página */
+  }
+
+  /* KPIs — 1 columna */
   .kpi-grid  { grid-template-columns: 1fr; }
-  .page-header { flex-direction: column; align-items: flex-start; }
-  .page-actions { width: 100%; }
+  .stats-row { grid-template-columns: 1fr; }
+
+  /* Encabezado de página — apilado */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .page-title { font-size: 18px; }
+  .page-subtitle { font-size: 12px; }
+
+  /* Botones de acciones — 2 por fila */
+  .page-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .page-actions .btn {
+    flex: 1 1 calc(50% - 3px);
+    min-width: 120px;
+    justify-content: center;
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+
+  /* Info grid — 1 columna */
   .info-grid { grid-template-columns: 1fr; }
 
-  .modal { max-width: 100%; margin: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-  .modal-overlay { align-items: flex-end; padding: 0; }
+  /* Tablas con scroll horizontal */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Forzar tabla dentro del scroll wrapper */
+  .table { min-width: 480px; }
 
-  .bar-chart { height: 120px; }
+  /* Forzar grids inline a no expandir la página */
+  #cotiz-grid > * { min-width: 0; }
 
-  .login-card { padding: 32px 24px 24px; }
-  .login-logo-box { width: 80px; height: 80px; }
-  .login-logo-box img { width: 72px; height: 72px; }
+  /* Filter bar — scroll horizontal, sin wrap */
+  .filter-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 6px;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .filter-bar::-webkit-scrollbar { display: none; }
+  .filter-chip { flex-shrink: 0; font-size: 11px; padding: 5px 10px; }
+  .filter-search { min-width: 150px; flex-shrink: 0; }
 
-  .card { padding: 16px; }
-  #content-area { padding: 16px 12px; }
+  /* Tabs scrollables */
+  .tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex-shrink: 0; padding: 8px 14px; }
+
+  /* Modal como bottom-sheet */
+  .modal {
+    max-width: 100%;
+    width: 100%;
+    margin: 0;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    max-height: 88vh;
+  }
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  /* Gráfico de barras más pequeño */
+  .bar-chart { height: 100px; }
+  .bar-col-label { font-size: 9px; }
+  .bar-col-val   { font-size: 9px; }
+
+  /* Login */
+  .login-card {
+    padding: 28px 18px 22px;
+    border-radius: 16px;
+  }
+  .login-logo-box { width: 72px; height: 72px; }
+  .login-logo-box img { width: 64px; height: 64px; }
+  .login-welcome { font-size: 19px; }
+  .login-desc    { font-size: 12px; }
+
+  /* Toast — ancho completo */
+  #toast-container {
+    bottom: 12px;
+    right: 10px;
+    left: 10px;
+  }
+  .toast {
+    min-width: unset;
+    max-width: 100%;
+    width: 100%;
+  }
+
+  /* Calendario */
+  .calendar-grid { gap: 2px; }
+  .cal-day { min-height: 50px; padding: 3px; }
+  .cal-day-header { font-size: 9px; padding: 4px 1px; }
+  .cal-event { font-size: 9px; padding: 1px 3px; }
+  .cal-day-num { font-size: 11px; }
+
+  /* Total box del cotizador */
+  .total-box { padding: 12px 14px; }
+  .total-row.grand { font-size: 18px; }
+
+  /* Botones dentro de tablas — más pequeños */
+  .table .btn-sm {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+
+  /* Formularios — padding reducido */
+  .form-input,
+  .form-select,
+  .form-textarea {
+    padding: 9px 10px;
+    font-size: 14px; /* 14px evita zoom automático en iOS */
+  }
+  .form-group { margin-bottom: 12px; }
+
+  /* Modal body con padding reducido */
+  .modal-body { padding: 0 16px 20px; }
+  .modal-header { padding: 16px 16px 0; margin-bottom: 14px; }
+  .modal-footer { padding: 12px 16px; }
 }
 
 /* ── PRINT ─────────────────────────────────────────── */
