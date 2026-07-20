@@ -384,12 +384,12 @@ Router.register('nueva-cotizacion', async (view, params) => {
 
     <!-- ══ PANEL ASISTENTE IA ══════════════════════════════════ -->
     <div class="card" id="asistente-card" style="margin-bottom:20px;border:2px solid var(--green-mid);background:linear-gradient(135deg,#f0fdf4,#ffffff);">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:0;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:0;flex-wrap:wrap;">
         <div style="background:var(--green-main);color:white;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;letter-spacing:0.3px;flex-shrink:0;">
-          ✦ Asistente
+          ✦ Asistente IA
         </div>
-        <span style="font-size:13px;color:var(--text-gray);flex:1;">
-          Pega la conversación de WhatsApp para sugerir precios automáticamente
+        <span style="font-size:13px;color:var(--text-gray);flex:1;min-width:0;">
+          Pega una conversación de WhatsApp para sugerir precios
         </span>
         <button class="btn btn-ghost btn-sm" id="btn-toggle-asistente" onclick="window._toggleAsistente()" style="flex-shrink:0;">
           Ocultar
@@ -398,8 +398,8 @@ Router.register('nueva-cotizacion', async (view, params) => {
 
       <div id="asistente-panel" style="margin-top:14px;">
         <textarea id="wa-texto" class="form-textarea"
-          placeholder="Pega aquí la conversación completa de WhatsApp con el cliente…&#10;&#10;Ejemplo:&#10;— Hola buenos días, quería cotizar una puerta de vidrio corrediza para la sala&#10;— ¿Qué medidas tiene el vano? ¿ancho x alto?&#10;— Aproximadamente 2 metros de ancho por 2.10 de alto"
-          style="min-height:130px;font-size:13px;resize:vertical;"></textarea>
+          placeholder="Pega aquí la conversación de WhatsApp con el cliente…"
+          style="min-height:100px;font-size:13px;resize:vertical;"></textarea>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="window._analizarConversacion()">
             Analizar y sugerir precios
@@ -624,6 +624,14 @@ Router.register('nueva-cotizacion', async (view, params) => {
     // Scroll hacia el formulario
     document.getElementById('cotiz-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  // En móvil arrancar el asistente colapsado para no tapar el formulario
+  if (window.innerWidth <= 768) {
+    const panel = document.getElementById('asistente-panel');
+    const btn   = document.getElementById('btn-toggle-asistente');
+    if (panel) panel.style.display = 'none';
+    if (btn)   btn.textContent = 'Mostrar';
+  }
 
   // Precargar la base de datos de precios en segundo plano
   Asistente.cargarDB().then(db => {
