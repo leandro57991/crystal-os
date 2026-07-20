@@ -63,6 +63,13 @@
   flex-shrink: 0;
 }
 
+/* ── LAPTOP MEDIO (1280px) — reduce saturación en pantallas medianas ── */
+
+@media (max-width: 1280px) {
+  #content-area { padding: 24px 24px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
 /* ── TABLET (1024px) ─────────────────────────────────── */
 
 @media (max-width: 1024px) {
@@ -132,9 +139,9 @@
     min-width: 0;  /* Permite que la card se encoja en grid sin expandir la página */
   }
 
-  /* KPIs — 1 columna */
-  .kpi-grid  { grid-template-columns: 1fr; }
-  .stats-row { grid-template-columns: 1fr; }
+  /* KPIs — 2 columnas en móvil (mejor que 1 sola) */
+  .kpi-grid  { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stats-row { grid-template-columns: repeat(3, 1fr); gap: 8px; }
 
   /* Encabezado de página — apilado */
   .page-header {
@@ -251,6 +258,17 @@
   /* Total box del cotizador */
   .total-box { padding: 12px 14px; }
   .total-row.grand { font-size: 18px; }
+
+  /* KPI en 2 columnas — texto más pequeño para que quepan */
+  .kpi-value { font-size: 18px; }
+  .kpi-card  { padding: 14px 16px; }
+  .kpi-icon  { width: 32px; height: 32px; margin-bottom: 6px; }
+  .kpi-icon svg { width: 16px; height: 16px; }
+
+  /* Stat pills compactas */
+  .stat-pill { padding: 10px 12px; }
+  .stat-pill .stat-num { font-size: 18px; }
+  .stat-pill .stat-lbl { font-size: 10px; }
 
   /* Botones dentro de tablas — más pequeños */
   .table .btn-sm {

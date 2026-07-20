@@ -281,8 +281,13 @@ input, select, textarea { font-family: inherit; }
   margin-left: var(--sidebar-w);
   margin-top: var(--header-h);
   flex: 1;
-  padding: 32px;
+  padding: 28px 32px;
   min-height: calc(100vh - var(--header-h));
+}
+
+/* Limita el ancho del contenido en pantallas muy anchas */
+#app-view {
+  max-width: 1440px;
 }
 
 /* ── PAGE TITLES ─────────────────────────────────────── */
