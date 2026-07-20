@@ -16,7 +16,7 @@ function uid() {
 /* ── CRUD GENÉRICO ─────────────────────────────────────────── */
 
 async function getAll(store, indexName = null, value = null) {
-  let query = _supa.from(store).select('id, data').order('created_at', { ascending: true });
+  let query = _supa.from(store).select('id, data, created_at').order('created_at', { ascending: true });
   if (indexName && value !== null && value !== undefined) {
     query = query.eq(`data->>${indexName}`, String(value));
   }
