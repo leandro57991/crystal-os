@@ -697,7 +697,7 @@ Router.register('ver-cotizacion', async (view, params) => {
       <div style="font-size:13px;font-weight:700;color:${pagadoTotal ? 'var(--success)' : 'var(--amber)'};margin-bottom:12px;">
         ${pagadoTotal ? 'Pagado en su totalidad' : 'Abono registrado'}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;">
         <div><div style="font-size:12px;color:var(--text-gray);">Total cotización</div><div style="font-size:18px;font-weight:700;">${fmt(c.total||0)}</div></div>
         <div><div style="font-size:12px;color:var(--text-gray);">${pagadoTotal ? 'Cancelado' : 'Abonado'}</div><div style="font-size:18px;font-weight:700;color:var(--success);">${fmt(abonoAcum)}</div></div>
         ${pagadoTotal
@@ -1078,9 +1078,14 @@ async function generarPDFCotizacion(id, fromForm = false) {
     }
   }
 
-  // Colores principales
-  const greenHeader = [0, 112, 48]; // #007030 verde oscuro del banner
-  const tealTitle = [0, 102, 102];  // #006666 teal de "COTIZACION"
+  // Formato de moneda igual al de las cotizaciones históricas (Balboa)
+  function fmtPDF(n) {
+    return 'B/.' + Number(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // Colores principales — mismo verde de marca en todo el documento
+  const greenHeader = [31, 122, 60]; // #1F7A3C verde principal Crystal Services
+  const tealTitle   = [31, 122, 60];
   
   // Banner superior
   doc.setFillColor(...greenHeader);
@@ -1091,23 +1096,26 @@ async function generarPDFCotizacion(id, fromForm = false) {
     doc.addImage(logoBase64, 'PNG', MR - 30, 8, 30, 25);
   }
   
-  // Tabla de fecha superior derecha
+  // Tabla de número/fecha superior derecha (caja completa, igual a las cotizaciones históricas)
   const fechaY = 36;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setDrawColor(200, 200, 200);
-  doc.line(MR - 40, fechaY, MR, fechaY); // linea sup
-  doc.line(MR - 40, fechaY+6, MR, fechaY+6); // linea inf
-  doc.line(MR - 20, fechaY, MR - 20, fechaY+6); // div
-  
-  doc.text('Fecha', MR - 38, fechaY + 4.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(255, 0, 0); // Rojo
-  doc.text(c.numero || '0000', MR - 10, fechaY - 1, { align: 'center' }); // numero rojo arriba de fecha
-  doc.setTextColor(0, 0, 0);
   const fParsed = c.fecha ? new Date(c.fecha+'T12:00:00') : new Date();
   const fDisp = `${String(fParsed.getDate()).padStart(2,'0')}/${String(fParsed.getMonth()+1).padStart(2,'0')}/${fParsed.getFullYear()}`;
-  doc.text(fDisp, MR - 10, fechaY + 4.5, { align: 'center' });
+
+  doc.autoTable({
+    startY: fechaY - 6,
+    body: [['', c.numero || '0000'], ['Fecha', fDisp]],
+    theme: 'grid',
+    tableWidth: 40,
+    margin: { left: MR - 40 },
+    styles: { fontSize: 10, cellPadding: 2, halign: 'center', valign: 'middle', lineColor: [0,0,0], lineWidth: 0.2, textColor: 0 },
+    columnStyles: { 0: { cellWidth: 18, halign: 'left' }, 1: { cellWidth: 22 } },
+    didParseCell: function(data) {
+      if (data.row.index === 0 && data.column.index === 1) {
+        data.cell.styles.textColor = [255, 0, 0];
+        data.cell.styles.fontStyle = 'bold';
+      }
+    }
+  });
 
   // Título Izquierda
   doc.setFont('helvetica', 'bold');
@@ -1179,8 +1187,8 @@ async function generarPDFCotizacion(id, fromForm = false) {
     if (config.unidad) row.push(l.unidad || '—');
     if (config.m2) row.push(l.m2 && l.m2 !== '—' ? `${l.m2}` : '—');
     if (config.cantidad) row.push(l.cantidad || 1);
-    row.push(fmt(l.precio || 0));
-    row.push(fmt(l.total  || 0));
+    row.push(fmtPDF(l.precio || 0));
+    row.push(fmtPDF(l.total  || 0));
     return row;
   });
 
@@ -1191,7 +1199,7 @@ async function generarPDFCotizacion(id, fromForm = false) {
       body:   rows,
       theme:  'grid',
       headStyles: {
-        fillColor:  [0, 128, 0], // Verde claro
+        fillColor:  greenHeader,
         textColor:  255,
         fontStyle:  'bold',
         fontSize:   9,
@@ -1227,63 +1235,47 @@ async function generarPDFCotizacion(id, fromForm = false) {
 
   let finalY = doc.lastAutoTable?.finalY || 160;
 
-  // Totales
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  
-  const rightColX = MR - 30;
-  const labelsX = rightColX - 25;
-  
-  let ty = finalY + 8;
-  doc.text('SUBTOTAL', labelsX, ty, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.text(fmt(c.subtotal||0), MR, ty, { align: 'right' });
-  
-  doc.line(rightColX, ty - 5, rightColX, ty + 2); // vertical line
-  doc.line(rightColX, ty + 2, MR, ty + 2); // horiz line
-  
-  if (c.aplicaITBMS !== false && c.itbms > 0) {
-    ty += 6;
-    doc.setFont('helvetica', 'bold');
-    doc.text('ITBMS (7%)', labelsX, ty, { align: 'right' });
-    doc.setFont('helvetica', 'normal');
-    doc.text(fmt(c.itbms||0), MR, ty, { align: 'right' });
-    doc.line(rightColX, ty - 4, rightColX, ty + 2);
-    doc.line(rightColX, ty + 2, MR, ty + 2);
-  }
-
-  // TRANSPORTE (Placeholder, currently no transp field in model, just putting it there to match template if needed)
-  ty += 6;
-  doc.setFont('helvetica', 'bold');
-  doc.text('TRANSPORTE', labelsX, ty, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.text('—', MR, ty, { align: 'right' });
-  doc.line(rightColX, ty - 4, rightColX, ty + 2);
-  doc.line(rightColX, ty + 2, MR, ty + 2);
-
-  // TOTAL
-  ty += 6;
-  doc.setFont('helvetica', 'bold');
-  doc.text('TOTAL', labelsX, ty, { align: 'right' });
-  doc.setFillColor(0, 128, 0); // Verde claro total
-  doc.rect(rightColX, ty - 4, MR - rightColX, 6, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.text(fmt(c.total||0), MR, ty, { align: 'right' });
-  
-  // Abono y Restante
+  // Totales — tabla con bordes parejos, igual a las cotizaciones históricas
   const tipoCotiz = c.tipoCotizacion || 'Estandar';
-  if (c.abono60 > 0 || c.saldo40 > 0) {
-    ty += 6;
-    doc.setTextColor(0, 128, 0);
-    const abonoPct = tipoCotiz === 'Smart Glass' ? '80' : '60';
-    doc.text(`ABONO (${abonoPct}%)`, labelsX, ty, { align: 'right' });
-    doc.text(fmt(c.abono60||0), MR, ty, { align: 'right' });
-    
-    ty += 6;
-    const saldoPct = tipoCotiz === 'Smart Glass' ? '20' : '40';
-    doc.text(`RESTANTE (${saldoPct}%)`, labelsX, ty, { align: 'right' });
-    doc.text(fmt(c.saldo40||0), MR, ty, { align: 'right' });
+  const abonoPct  = tipoCotiz === 'Smart Glass' ? '80' : '60';
+  const saldoPct  = tipoCotiz === 'Smart Glass' ? '20' : '40';
+
+  const totalRows = [['SUBTOTAL', fmtPDF(c.subtotal||0)]];
+  if (c.aplicaITBMS !== false && c.itbms > 0) {
+    totalRows.push(['ITBMS (7%)', fmtPDF(c.itbms||0)]);
   }
+  totalRows.push(['TRANSPORTE', '—']);
+  totalRows.push(['TOTAL', fmtPDF(c.total||0)]);
+  if (c.abono60 > 0 || c.saldo40 > 0) {
+    totalRows.push([`ABONO (${abonoPct}%)`, fmtPDF(c.abono60||0)]);
+    totalRows.push([`RESTANTE (${saldoPct}%)`, fmtPDF(c.saldo40||0)]);
+  }
+
+  doc.autoTable({
+    startY: finalY + 4,
+    body: totalRows,
+    theme: 'grid',
+    tableWidth: 75,
+    margin: { left: MR - 75 },
+    styles: { fontSize: 9, cellPadding: 2.2, lineColor: [0,0,0], lineWidth: 0.2, textColor: 0 },
+    columnStyles: {
+      0: { fontStyle: 'bold', halign: 'right', cellWidth: 40 },
+      1: { halign: 'right', cellWidth: 35 },
+    },
+    didParseCell: function(data) {
+      const label = data.row.raw[0];
+      if (label === 'TOTAL') {
+        data.cell.styles.fillColor = greenHeader;
+        data.cell.styles.textColor = [255,255,255];
+        data.cell.styles.fontStyle = 'bold';
+      } else if (typeof label === 'string' && label.startsWith('ABONO')) {
+        data.cell.styles.textColor = greenHeader;
+        data.cell.styles.fontStyle = 'bold';
+      }
+    }
+  });
+
+  let ty = doc.lastAutoTable.finalY;
 
   // Caja de Condiciones (Bottom Left)
   const by = Math.max(ty + 10, 210);
@@ -1327,7 +1319,7 @@ async function generarPDFCotizacion(id, fromForm = false) {
   doc.setFont('helvetica', 'normal');
   doc.text('email: crystalservicejj@gmail.com', ML + 2, cy_cond);
   cy_cond += 4;
-  doc.setTextColor(0, 128, 0);
+  doc.setTextColor(...greenHeader);
   doc.setFont('helvetica', 'bold');
   doc.text('https://www.crystalservicejj.com', ML + 2, cy_cond);
 
@@ -1346,7 +1338,7 @@ async function generarPDFCotizacion(id, fromForm = false) {
     doc.text('Banistmo 4150101799', W - 70, by + 13);
     doc.text('Banco General 04-07-00-000738-5', W - 70, by + 17);
     doc.text('YAPPY: 63621132 / 63621210', W - 70, by + 21);
-    doc.setTextColor(0, 128, 0);
+    doc.setTextColor(...greenHeader);
     doc.setFont('helvetica', 'bold');
     doc.text('GRACIAS POR SU CONFIANZA', W - 60, by + 35);
   }

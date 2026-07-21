@@ -72,7 +72,7 @@ Router.register('biblioteca', async (view) => {
       </div>
 
       <!-- Modal Subir Foto -->
-      <div class="modal-overlay" id="modal-foto" style="display:none;z-index:9999;">
+      <div class="modal-overlay" id="modal-foto">
         <div class="modal" style="max-width:400px;width:100%;">
           <div class="modal-header">
             <h3 class="modal-title">Subir Imagen</h3>

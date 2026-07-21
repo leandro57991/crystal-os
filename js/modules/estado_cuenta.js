@@ -43,7 +43,7 @@ Router.register('estado-cuenta', async (view) => {
     const totalClientes = clientes.filter(c=>(c.totalFacturado-c.totalAbonado)>0.01).length;
 
     cont.innerHTML = `
-      <div class="stats-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
+      <div class="stats-row" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:20px;">
         <div class="stat-pill">
           <div class="stat-num">${clientes.length}</div>
           <div class="stat-lbl">Clientes en cartera</div>

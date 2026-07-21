@@ -69,7 +69,7 @@ Router.register('cobros', async (view) => {
       <!-- Aging -->
       <div class="card" style="margin-bottom:16px;">
         <div class="card-title" style="margin-bottom:14px;">Antigüedad de la cartera</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+        <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;">
           ${[
             {label:'0–30 días',  val:aging.d30, cls:''},
             {label:'31–60 días', val:aging.d60, cls:'amber'},

@@ -215,7 +215,7 @@ window.Asistente = (() => {
       : '<span style="color:var(--text-gray);font-size:12px;">No se detectaron medidas</span>';
 
     const statsHtml = stats ? `
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0;">
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0;">
         <div style="background:var(--green-light);border-radius:8px;padding:10px;text-align:center;">
           <div style="font-size:10px;color:var(--text-gray);font-weight:600;text-transform:uppercase;">Mínimo</div>
           <div style="font-size:18px;font-weight:700;color:var(--text-dark);">${fmt(stats.min)}</div>

@@ -166,7 +166,7 @@ Router.register('supervisor', async (view) => {
     if (!cont) return;
 
     cont.innerHTML = `
-      <div class="stats-row" style="grid-template-columns:repeat(3,1fr);">
+      <div class="stats-row" style="grid-template-columns:repeat(3,minmax(0,1fr));">
         <div class="stat-pill">
           <div class="stat-num">${reportes.length}</div>
           <div class="stat-lbl">Reportes recibidos</div>
