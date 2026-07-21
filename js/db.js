@@ -172,6 +172,7 @@ async function getVisitasByMes(year, month) {
     return d.getFullYear() === year && d.getMonth() === month;
   });
 }
+async function deleteVisita(id) { return remove('visitas', id); }
 
 /* ── PROYECTOS ─────────────────────────────────────────── */
 
@@ -392,7 +393,7 @@ const DB = {
   // Clientes
   saveCliente, getClientes, findOrCreateCliente,
   // Visitas / Agenda
-  saveVisita, getVisitas, getVisitasByMes,
+  saveVisita, getVisitas, getVisitasByMes, deleteVisita,
   // Proyectos
   saveProyecto, getProyectos, getProyectosActivos,
   // Trabajadores

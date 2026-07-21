@@ -100,16 +100,21 @@ Router.register('agenda', async (view) => {
           </div>
 
           <div class="card">
-            <div class="card-title" style="margin-bottom:12px;">Visitas de este mes</div>
-            ${visitas.length === 0
-              ? '<div style="color:var(--text-gray);font-size:13px;">Sin visitas registradas</div>'
-              : visitas.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(v => `
-                  <div style="padding:8px 0;border-bottom:1px solid var(--border);">
-                    <div style="font-size:12.5px;font-weight:600;">${v.clienteNombre}</div>
-                    <div style="font-size:11px;color:var(--text-gray);">${v.fecha} · ${v.motivo||'—'}</div>
-                    <div style="margin-top:4px;">${visitaBadge(v.estado)}</div>
-                  </div>`).join('')
-            }
+            <div class="card-title" style="margin-bottom:12px;">Visitas de este mes (${visitas.length})</div>
+            <div style="${visitas.length > 6 ? 'max-height:340px;overflow-y:auto;' : ''}">
+              ${visitas.length === 0
+                ? '<div style="color:var(--text-gray);font-size:13px;">Sin visitas registradas</div>'
+                : visitas.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(v => `
+                    <div style="padding:8px 4px 8px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="editarVisita('${v.id}')">
+                      <div style="font-size:12.5px;font-weight:600;">${v.clienteNombre}</div>
+                      <div style="font-size:11px;color:var(--text-gray);">${v.fecha} · ${v.motivo||'—'}</div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
+                        ${visitaBadge(v.estado)}
+                        <button class="btn btn-xs btn-outline" style="color:var(--danger);" title="Eliminar" onclick="event.stopPropagation();eliminarVisita('${v.id}')">${UI.icons.trash}</button>
+                      </div>
+                    </div>`).join('')
+              }
+            </div>
           </div>
         </div>
       </div>
@@ -160,6 +165,7 @@ Router.register('agenda', async (view) => {
     document.getElementById('v-hora').value = '09:00';
     document.getElementById('v-estado').value = 'Agendada';
     document.getElementById('modal-visita-titulo').textContent = 'Nueva Visita';
+    document.getElementById('btn-eliminar-visita').style.display = 'none';
 
     if (visitaId) {
       const visitas = await DB.getVisitas();
@@ -174,6 +180,7 @@ Router.register('agenda', async (view) => {
         document.getElementById('v-motivo').value        = v.motivo || '';
         document.getElementById('v-estado').value        = v.estado || 'Agendada';
         document.getElementById('v-notas').value         = v.notas || '';
+        document.getElementById('btn-eliminar-visita').style.display = '';
       }
     }
 
@@ -182,6 +189,14 @@ Router.register('agenda', async (view) => {
 
   window.editarVisita = async (id) => {
     await window.abrirFormVisita(null, id);
+  };
+
+  window.eliminarVisita = async (id) => {
+    if (!confirm('¿Eliminar esta visita? Esta acción no se puede deshacer.')) return;
+    await DB.deleteVisita(id);
+    UI.closeModal('modal-visita');
+    UI.toast('Visita eliminada', 'info');
+    await renderCalendar();
   };
 
   window.guardarVisita = async (agregarGCal = false) => {
@@ -276,6 +291,7 @@ Router.register('agenda', async (view) => {
           </div>
         </div>
         <div class="modal-footer" style="gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-outline" id="btn-eliminar-visita" style="display:none;color:var(--danger);border-color:var(--danger);" onclick="eliminarVisita(document.getElementById('v-id').value)">${UI.icons.trash} Eliminar</button>
           <button class="btn btn-outline" onclick="UI.closeModal('modal-visita')">Cancelar</button>
           <button class="btn btn-secondary" onclick="guardarVisita(false)">Guardar visita</button>
           <button class="btn btn-primary" onclick="guardarVisita(true)" title="Guarda y abre Google Calendar">
