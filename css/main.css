@@ -275,6 +275,39 @@ input, select, textarea { font-family: inherit; }
   cursor: pointer;
 }
 
+/* Menú de usuario del header (siempre accesible, sin depender del sidebar) */
+.header-user-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 200px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-md);
+  padding: 14px;
+  z-index: 150;
+}
+.header-user-dropdown.open { display: block; }
+.header-user-dropdown-name { font-size: 13px; font-weight: 700; color: var(--text-dark); }
+.header-user-dropdown-role { font-size: 11px; color: var(--text-gray); margin-bottom: 10px; }
+.btn-logout-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--green-light);
+  color: var(--danger);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  padding: 9px 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.btn-logout-header:hover { background: #FEF2F2; border-color: var(--danger); }
+
 /* ── CONTENT AREA ─────────────────────────────────────── */
 
 #content-area {

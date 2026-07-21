@@ -79,8 +79,25 @@ const UI = (() => {
     if (footerRole) footerRole.textContent = rolLabel(user?.rol);
     if (footerAvatar) footerAvatar.textContent = (user?.nombre || 'U')[0].toUpperCase();
 
+    // Menú de usuario del header (siempre accesible, sin depender del sidebar)
+    const headerAvatar = document.getElementById('header-avatar');
+    const headerName   = document.getElementById('header-user-dropdown-name');
+    const headerRole   = document.getElementById('header-user-dropdown-role');
+    if (headerAvatar) headerAvatar.textContent = (user?.nombre || 'U')[0].toUpperCase();
+    if (headerName) headerName.textContent = user?.nombre || 'Usuario';
+    if (headerRole) headerRole.textContent = rolLabel(user?.rol);
+
     // Notif badge
     refreshNotifBadge();
+  }
+
+  /* ── MENÚ DE USUARIO DEL HEADER ──────────────────────── */
+
+  function toggleHeaderUserMenu() {
+    document.getElementById('header-user-dropdown')?.classList.toggle('open');
+  }
+  function closeHeaderUserMenu() {
+    document.getElementById('header-user-dropdown')?.classList.remove('open');
   }
 
   function rolLabel(rol) {
@@ -189,6 +206,7 @@ const UI = (() => {
     toast, openModal, closeModal, closeAllModals,
     buildSidebar, updateBreadcrumb, refreshNotifBadge,
     openMobileSidebar, closeMobileSidebar,
+    toggleHeaderUserMenu, closeHeaderUserMenu,
     showLogin, showApp, confirm, showLoading, icons
   };
 })();
