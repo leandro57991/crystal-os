@@ -85,6 +85,7 @@
     box-shadow: 4px 0 24px rgba(0,0,0,0.2);
   }
   #sidebar-overlay.open { display: block; }
+  .sidebar-close { display: flex; }
 
   #header {
     left: 0;

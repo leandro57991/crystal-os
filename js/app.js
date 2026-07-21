@@ -83,6 +83,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('sidebar-overlay')?.addEventListener('click', () => {
     UI.closeMobileSidebar();
   });
+  document.getElementById('btn-cerrar-sidebar')?.addEventListener('click', () => {
+    UI.closeMobileSidebar();
+  });
 
   document.getElementById('btn-notif')?.addEventListener('click', async () => {
     const notifs = await DB.getNotificacionesPendientes();
