@@ -63,43 +63,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  /* ── LOGOUT ─────────────────────────────────────────── */
-
-  document.getElementById('btn-logout')?.addEventListener('click', () => {
-    if (window.confirm('¿Cerrar sesión?')) Auth.logout();
-  });
-
-  /* ── AVATAR DEL HEADER → CONFIGURACIÓN ────────────────── */
-
-  document.getElementById('header-avatar')?.addEventListener('click', () => {
-    Router.go('configuracion');
-  });
-
-  /* ── SIDEBAR MOBILE ─────────────────────────────────── */
-
-  document.getElementById('btn-hamburger')?.addEventListener('click', () => {
-    UI.openMobileSidebar();
-  });
-  document.getElementById('sidebar-overlay')?.addEventListener('click', () => {
-    UI.closeMobileSidebar();
-  });
-  document.getElementById('btn-cerrar-sidebar')?.addEventListener('click', () => {
-    UI.closeMobileSidebar();
-  });
-
-  document.getElementById('btn-notif')?.addEventListener('click', async () => {
-    const notifs = await DB.getNotificacionesPendientes();
-    if (notifs.length === 0) {
-      UI.toast('Sin notificaciones pendientes', 'success');
-      return;
-    }
-    const msg = notifs.slice(0,5).map(n => `• ${n.titulo}`).join('\n');
-    alert(`Notificaciones (${notifs.length}):\n\n${msg}`);
-    // Marcar como leídas
-    for (const n of notifs) await DB.marcarLeida(n.id);
-    UI.refreshNotifBadge();
-  });
-
   /* ── BACKGROUND RECORDATORIOS ─────────────────────────── */
 
   window.startRemindersPoller = () => {
@@ -137,11 +100,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 20000); // Check every 20s to ensure we don't skip a minute boundary easily
   };
 
-  /* ── MODAL CIERRE AL HACER CLICK FUERA ──────────────── */
+  /* ── CLICS GLOBALES (delegados en document) ───────────
+     Un solo listener para todo: más confiable que enganchar
+     cada botón por separado, sobre todo en celular.       */
 
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
+    // Cerrar modal al tocar fuera
     if (e.target.classList.contains('modal-overlay')) {
       e.target.classList.remove('open');
+      return;
+    }
+    // Logout (sidebar y Configuración)
+    if (e.target.closest('#btn-logout')) {
+      if (window.confirm('¿Cerrar sesión?')) Auth.logout();
+      return;
+    }
+    // Avatar del header → Configuración
+    if (e.target.closest('#header-avatar')) {
+      Router.go('configuracion');
+      return;
+    }
+    // Abrir/cerrar panel lateral en celular
+    if (e.target.closest('#btn-hamburger')) {
+      UI.openMobileSidebar();
+      return;
+    }
+    if (e.target.closest('#btn-cerrar-sidebar')) {
+      UI.closeMobileSidebar();
+      return;
+    }
+    if (e.target.id === 'sidebar-overlay') {
+      UI.closeMobileSidebar();
+      return;
+    }
+    // Campana de notificaciones
+    if (e.target.closest('#btn-notif')) {
+      const notifs = await DB.getNotificacionesPendientes();
+      if (notifs.length === 0) {
+        UI.toast('Sin notificaciones pendientes', 'success');
+        return;
+      }
+      const msg = notifs.slice(0,5).map(n => `• ${n.titulo}`).join('\n');
+      alert(`Notificaciones (${notifs.length}):\n\n${msg}`);
+      for (const n of notifs) await DB.marcarLeida(n.id);
+      UI.refreshNotifBadge();
+      return;
     }
   });
 });
