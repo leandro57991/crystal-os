@@ -100,51 +100,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 20000); // Check every 20s to ensure we don't skip a minute boundary easily
   };
 
-  /* ── CLICS GLOBALES (delegados en document) ───────────
-     Un solo listener para todo: más confiable que enganchar
-     cada botón por separado, sobre todo en celular.       */
+  /* ── CIERRE DE MODALES AL TOCAR FUERA ─────────────────── */
 
-  document.addEventListener('click', async (e) => {
-    // Cerrar modal al tocar fuera
+  document.addEventListener('click', (e) => {
     if (e.target.classList.contains('modal-overlay')) {
       e.target.classList.remove('open');
-      return;
-    }
-    // Logout (sidebar y Configuración)
-    if (e.target.closest('#btn-logout')) {
-      if (window.confirm('¿Cerrar sesión?')) Auth.logout();
-      return;
-    }
-    // Avatar del header → Configuración
-    if (e.target.closest('#header-avatar')) {
-      Router.go('configuracion');
-      return;
-    }
-    // Abrir/cerrar panel lateral en celular
-    if (e.target.closest('#btn-hamburger')) {
-      UI.openMobileSidebar();
-      return;
-    }
-    if (e.target.closest('#btn-cerrar-sidebar')) {
-      UI.closeMobileSidebar();
-      return;
-    }
-    if (e.target.id === 'sidebar-overlay') {
-      UI.closeMobileSidebar();
-      return;
-    }
-    // Campana de notificaciones
-    if (e.target.closest('#btn-notif')) {
-      const notifs = await DB.getNotificacionesPendientes();
-      if (notifs.length === 0) {
-        UI.toast('Sin notificaciones pendientes', 'success');
-        return;
-      }
-      const msg = notifs.slice(0,5).map(n => `• ${n.titulo}`).join('\n');
-      alert(`Notificaciones (${notifs.length}):\n\n${msg}`);
-      for (const n of notifs) await DB.marcarLeida(n.id);
-      UI.refreshNotifBadge();
-      return;
     }
   });
 });
+
+/* ── CAMPANA DE NOTIFICACIONES ──────────────────────────
+   Global (no dentro del listener DOMContentLoaded) y enganchada
+   por atributo onclick="" en el HTML — el mismo patrón que usan
+   el resto de los botones de la app (guardar, editar, etc.),
+   que es más confiable en algunos navegadores/celulares que
+   addEventListener agregado después de cargar la página.      */
+window._verNotificaciones = async () => {
+  const notifs = await DB.getNotificacionesPendientes();
+  if (notifs.length === 0) {
+    UI.toast('Sin notificaciones pendientes', 'success');
+    return;
+  }
+  const msg = notifs.slice(0,5).map(n => `• ${n.titulo}`).join('\n');
+  alert(`Notificaciones (${notifs.length}):\n\n${msg}`);
+  for (const n of notifs) await DB.marcarLeida(n.id);
+  UI.refreshNotifBadge();
+};
