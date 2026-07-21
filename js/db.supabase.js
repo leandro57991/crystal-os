@@ -139,6 +139,7 @@ async function getProyectosActivos() {
 
 async function getTrabajadores() { return getAll('trabajadores'); }
 async function saveTrabajador(data) { return save('trabajadores', data); }
+async function deleteTrabajador(id) { return remove('trabajadores', id); }
 
 /* ── REPORTES DIARIOS ───────────────────────────────────────── */
 
@@ -160,6 +161,7 @@ async function getAsistenciaByRango(desde, hasta) {
   return todos.filter(a => a.fecha >= desde && a.fecha <= hasta);
 }
 async function getAsistenciaByFecha(fecha) { return getAll('asistencia', 'fecha', fecha); }
+async function deleteAsistencia(id) { return remove('asistencia', id); }
 
 /* ── COBROS / PAGOS ─────────────────────────────────────────── */
 
@@ -323,9 +325,9 @@ const DB = {
   saveCliente, getClientes, findOrCreateCliente,
   saveVisita, getVisitas, getVisitasByMes, deleteVisita,
   saveProyecto, getProyectos, getProyectosActivos,
-  getTrabajadores, saveTrabajador,
+  getTrabajadores, saveTrabajador, deleteTrabajador,
   saveReporte, getReportesByFecha, getReportesByTrabajador,
-  saveAsistencia, getAsistenciaByRango, getAsistenciaByFecha,
+  saveAsistencia, getAsistenciaByRango, getAsistenciaByFecha, deleteAsistencia,
   saveCobro, getCobros, registrarPago, getPagosByCobro,
   saveItemInventario, getInventario, movimientoInventario,
   addNotificacion, getNotificacionesPendientes, marcarLeida,

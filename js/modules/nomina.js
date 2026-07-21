@@ -148,13 +148,19 @@ Router.register('nomina', async (view) => {
                 <input id="edit-almuerzo" type="checkbox"> Almuerzo provisto ($5 desc.)
               </label>
             </div>
+            <div class="form-group">
+              <label style="display:flex;gap:8px;align-items:center;cursor:pointer;color:var(--danger);">
+                <input id="edit-ausente" type="checkbox" onchange="window._toggleAusenteModal()"> No vino ese día (Ausente)
+              </label>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Notas</label>
             <input id="edit-notas" class="form-input" placeholder="Observaciones opcionales">
           </div>
         </div>
-        <div class="modal-footer">
+        <div class="modal-footer" style="gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-outline" id="btn-eliminar-asist" style="display:none;color:var(--danger);border-color:var(--danger);" onclick="window.eliminarAsistenciaDesdeModal()">${UI.icons.trash} Eliminar registro</button>
           <button class="btn btn-outline" onclick="document.getElementById('modal-editar-asist').style.display='none'">Cancelar</button>
           <button class="btn btn-primary" onclick="window.guardarEdicionAsist()">Guardar cambios</button>
         </div>
@@ -215,35 +221,45 @@ Router.register('nomina', async (view) => {
         <div class="table-wrapper">
           <table class="table">
             <thead><tr>
-              <th>Trabajador</th><th>Rol</th><th>Entrada</th><th>Salida</th>
+              <th>Trabajador</th><th>Rol</th><th>Asistió</th><th>Entrada</th><th>Salida</th>
               <th>Horas Día</th><th>Hrs Noche/Ex</th>
               <th>Tardanza</th><th>Almuerzo</th><th>Vale ($)</th><th>Estado</th><th>Acción</th>
             </tr></thead>
             <tbody>
               ${trabajadores.map(t => {
                 const a = asistMap[t.id] || {};
+                const ausente = a.id ? !!a.ausente : false;
                 const tardMin = a.id ? (parseInt(a.tardanza)||0) : calcTardanza(a.entrada||'08:00');
                 return `
                   <tr>
                     <td><strong>${t.nombre}</strong></td>
                     <td><span style="font-size:12px;color:var(--text-gray);">${t.rol}</span></td>
-                    <td><input type="time" id="ent-${t.id}" class="form-input" style="width:100px;" value="${a.entrada||'08:00'}"></td>
-                    <td><input type="time" id="sal-${t.id}" class="form-input" style="width:100px;" value="${a.salida||'17:00'}"></td>
-                    <td><input type="number" id="hD-${t.id}" class="form-input" style="width:60px;" min="0" step="0.5" placeholder="8" value="${a.horasDia!==undefined?a.horasDia:8}"></td>
-                    <td><input type="number" id="hN-${t.id}" class="form-input" style="width:60px;" min="0" step="0.5" placeholder="0" value="${a.horasNoche||0}"></td>
                     <td>
-                      <input type="number" id="tar-${t.id}" class="form-input" style="width:60px;" min="0" value="${a.tardanza||0}">
-                      ${tardMin > 0 ? `<div style="font-size:11px;color:var(--amber);">${tardMin} min</div>` : ''}
+                      <label style="display:flex;gap:6px;align-items:center;cursor:pointer;white-space:nowrap;">
+                        <input type="checkbox" id="ausente-${t.id}" ${ausente?'checked':''} onchange="window.toggleAusente('${t.id}')">
+                        <span style="font-size:12px;color:var(--danger);">Faltó</span>
+                      </label>
                     </td>
-                    <td><label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" id="alm-${t.id}" ${a.almuerzo?'checked':''}> Sí</label></td>
+                    <td><input type="time" id="ent-${t.id}" class="form-input" style="width:100px;" value="${a.entrada||'08:00'}" ${ausente?'disabled':''}></td>
+                    <td><input type="time" id="sal-${t.id}" class="form-input" style="width:100px;" value="${a.salida||'17:00'}" ${ausente?'disabled':''}></td>
+                    <td><input type="number" id="hD-${t.id}" class="form-input" style="width:60px;" min="0" step="0.5" placeholder="8" value="${ausente?0:(a.horasDia!==undefined?a.horasDia:8)}" ${ausente?'disabled':''}></td>
+                    <td><input type="number" id="hN-${t.id}" class="form-input" style="width:60px;" min="0" step="0.5" placeholder="0" value="${ausente?0:(a.horasNoche||0)}" ${ausente?'disabled':''}></td>
+                    <td>
+                      <input type="number" id="tar-${t.id}" class="form-input" style="width:60px;" min="0" value="${ausente?0:(a.tardanza||0)}" ${ausente?'disabled':''}>
+                      ${!ausente && tardMin > 0 ? `<div style="font-size:11px;color:var(--amber);">${tardMin} min</div>` : ''}
+                    </td>
+                    <td><label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" id="alm-${t.id}" ${a.almuerzo?'checked':''} ${ausente?'disabled':''}> Sí</label></td>
                     <td><input type="number" id="vale-${t.id}" class="form-input" style="width:70px;" min="0" step="0.01" value="${a.vale||0}" placeholder="0.00"></td>
-                    <td>${a.id
+                    <td>${ausente
+                      ? '<span class="badge badge-danger">Ausente</span>'
+                      : a.id
                       ? '<span class="badge badge-success">Ok</span>'
                       : '<span class="badge badge-gray">Pendiente</span>'}</td>
                     <td>
                       <div style="display:flex;gap:4px;">
                         <button class="btn btn-sm btn-primary" data-trab="${t.id}" id="btn-asist-${t.id}">Guardar</button>
-                        ${a.id ? `<button class="btn btn-sm btn-outline" onclick="window.abrirEdicion('${t.id}','${a.id||''}','${fechaActual}','${t.nombre}')">${UI.icons.edit}</button>` : ''}
+                        ${a.id ? `<button class="btn btn-sm btn-outline" onclick="window.abrirEdicion('${t.id}','${a.id||''}','${fechaActual}','${t.nombre}')" title="Editar">${UI.icons.edit}</button>` : ''}
+                        ${a.id ? `<button class="btn btn-sm btn-outline" style="color:var(--danger);" onclick="window.eliminarAsistencia('${a.id}')" title="Eliminar / deshacer">${UI.icons.trash}</button>` : ''}
                       </div>
                     </td>
                   </tr>`;
@@ -268,17 +284,18 @@ Router.register('nomina', async (view) => {
   }
 
   async function guardarAsistenciaFila(trabId) {
-    const entrada  = document.getElementById(`ent-${trabId}`)?.value  || '08:00';
-    const salida   = document.getElementById(`sal-${trabId}`)?.value  || '17:00';
-    const horasDia = parseFloat(document.getElementById(`hD-${trabId}`)?.value)||0;
-    const horasNoche = parseFloat(document.getElementById(`hN-${trabId}`)?.value)||0;
-    const tardInput= parseInt(document.getElementById(`tar-${trabId}`)?.value)||0;
-    const almuerzo = document.getElementById(`alm-${trabId}`)?.checked;
+    const ausente  = document.getElementById(`ausente-${trabId}`)?.checked || false;
+    const entrada  = ausente ? '' : (document.getElementById(`ent-${trabId}`)?.value  || '08:00');
+    const salida   = ausente ? '' : (document.getElementById(`sal-${trabId}`)?.value  || '17:00');
+    const horasDia = ausente ? 0 : parseFloat(document.getElementById(`hD-${trabId}`)?.value)||0;
+    const horasNoche = ausente ? 0 : parseFloat(document.getElementById(`hN-${trabId}`)?.value)||0;
+    const tardInput= ausente ? 0 : parseInt(document.getElementById(`tar-${trabId}`)?.value)||0;
+    const almuerzo = ausente ? false : document.getElementById(`alm-${trabId}`)?.checked;
     const vale     = parseFloat(document.getElementById(`vale-${trabId}`)?.value)||0;
 
     // Auto-calcular tardanza si no se editó manualmente
-    const tardAuto = calcTardanza(entrada);
-    const tardanza = tardInput || tardAuto;
+    const tardAuto = ausente ? 0 : calcTardanza(entrada);
+    const tardanza = ausente ? 0 : (tardInput || tardAuto);
 
     const existentes = await DB.getAsistenciaByFecha(fechaActual);
     const existente  = existentes.find(a => a.trabajadorId === trabId);
@@ -287,11 +304,30 @@ Router.register('nomina', async (view) => {
       id:           existente?.id,
       trabajadorId: trabId,
       fecha:        fechaActual,
-      entrada, salida, horasDia, horasNoche, tardanza, almuerzo, vale,
+      entrada, salida, horasDia, horasNoche, tardanza, almuerzo, vale, ausente,
     });
-    UI.toast('Asistencia guardada', 'success');
+    UI.toast(ausente ? 'Falta registrada' : 'Asistencia guardada', ausente ? 'info' : 'success');
     await renderContent();
   }
+
+  window.toggleAusente = (trabId) => {
+    const ausente = document.getElementById(`ausente-${trabId}`)?.checked || false;
+    ['ent','sal','hD','hN','tar'].forEach(prefix => {
+      const el = document.getElementById(`${prefix}-${trabId}`);
+      if (!el) return;
+      el.disabled = ausente;
+      if (ausente && (prefix === 'hD' || prefix === 'hN' || prefix === 'tar')) el.value = 0;
+    });
+    const alm = document.getElementById(`alm-${trabId}`);
+    if (alm) { alm.disabled = ausente; if (ausente) alm.checked = false; }
+  };
+
+  window.eliminarAsistencia = async (registroId) => {
+    if (!confirm('¿Eliminar este registro de asistencia? Esto no se puede deshacer y el trabajador quedará como "Pendiente" ese día.')) return;
+    await DB.deleteAsistencia(registroId);
+    UI.toast('Registro de asistencia eliminado', 'info');
+    await renderContent();
+  };
 
   window.cambiarFecha = (delta) => {
     const d = new Date(fechaActual + 'T12:00:00');
@@ -322,31 +358,56 @@ Router.register('nomina', async (view) => {
     document.getElementById('edit-tardanza').value   = reg.tardanza || 0;
     document.getElementById('edit-vale').value       = reg.vale || 0;
     document.getElementById('edit-almuerzo').checked = reg.almuerzo || false;
+    document.getElementById('edit-ausente').checked  = reg.ausente  || false;
     document.getElementById('edit-notas').value      = reg.notas    || '';
+    document.getElementById('btn-eliminar-asist').style.display = reg.id ? '' : 'none';
+    window._toggleAusenteModal();
     document.getElementById('modal-editar-asist').style.display = 'flex';
+  };
+
+  window._toggleAusenteModal = () => {
+    const ausente = document.getElementById('edit-ausente').checked;
+    ['edit-entrada','edit-salida','edit-horasDia','edit-horasNoche','edit-tardanza'].forEach(id => {
+      document.getElementById(id).disabled = ausente;
+    });
+    document.getElementById('edit-almuerzo').disabled = ausente;
+    if (ausente) {
+      document.getElementById('edit-horasDia').value   = 0;
+      document.getElementById('edit-horasNoche').value = 0;
+      document.getElementById('edit-tardanza').value   = 0;
+      document.getElementById('edit-almuerzo').checked = false;
+    }
   };
 
   window.guardarEdicionAsist = async () => {
     const trabId    = document.getElementById('edit-trab-id').value;
     const registroId= document.getElementById('edit-registro-id').value;
-    const entrada   = document.getElementById('edit-entrada').value;
-    const salida    = document.getElementById('edit-salida').value;
-    const horasDia  = parseFloat(document.getElementById('edit-horasDia').value)||0;
-    const horasNoche= parseFloat(document.getElementById('edit-horasNoche').value)||0;
-    const tardanza  = parseInt(document.getElementById('edit-tardanza').value)||0;
+    const ausente   = document.getElementById('edit-ausente').checked;
+    const entrada   = ausente ? '' : document.getElementById('edit-entrada').value;
+    const salida    = ausente ? '' : document.getElementById('edit-salida').value;
+    const horasDia  = ausente ? 0 : parseFloat(document.getElementById('edit-horasDia').value)||0;
+    const horasNoche= ausente ? 0 : parseFloat(document.getElementById('edit-horasNoche').value)||0;
+    const tardanza  = ausente ? 0 : parseInt(document.getElementById('edit-tardanza').value)||0;
     const vale      = parseFloat(document.getElementById('edit-vale').value)||0;
-    const almuerzo  = document.getElementById('edit-almuerzo').checked;
+    const almuerzo  = ausente ? false : document.getElementById('edit-almuerzo').checked;
     const notas     = document.getElementById('edit-notas').value;
 
     await DB.saveAsistencia({
       id:           registroId || undefined,
       trabajadorId: trabId,
       fecha:        fechaActual,
-      entrada, salida, horasDia, horasNoche, tardanza, almuerzo, vale, notas,
+      entrada, salida, horasDia, horasNoche, tardanza, almuerzo, vale, ausente, notas,
     });
     document.getElementById('modal-editar-asist').style.display = 'none';
     UI.toast('Registro actualizado', 'success');
     await renderContent();
+  };
+
+  window.eliminarAsistenciaDesdeModal = async () => {
+    const registroId = document.getElementById('edit-registro-id').value;
+    if (!registroId) return;
+    document.getElementById('modal-editar-asist').style.display = 'none';
+    await window.eliminarAsistencia(registroId);
   };
 
   /* ── TAB: CÁLCULO DE NÓMINA ────────────────────────────── */
@@ -604,7 +665,10 @@ Router.register('nomina', async (view) => {
                    `Día: ${fmt(t.tarifaDia||0)} | Noche: ${fmt(t.tarifaNoche||0)} | Hora: ${fmt(t.tarifaHora||0)}`}
                 </td>
                 <td>
-                  <button class="btn btn-sm btn-outline" onclick="window.abrirTrabajador('${t.id}')">${UI.icons.edit} Editar</button>
+                  <div style="display:flex;gap:4px;">
+                    <button class="btn btn-sm btn-outline" onclick="window.abrirTrabajador('${t.id}')">${UI.icons.edit} Editar</button>
+                    <button class="btn btn-sm btn-outline" style="color:var(--danger);" onclick="window.eliminarTrabajador('${t.id}','${(t.nombre||'').replace(/'/g,"&#39;")}')" title="Eliminar">${UI.icons.trash}</button>
+                  </div>
                 </td>
               </tr>`).join('')}
             </tbody>
@@ -664,6 +728,14 @@ Router.register('nomina', async (view) => {
     await DB.saveTrabajador(data);
     document.getElementById('modal-trabajador').style.display = 'none';
     UI.toast(id ? 'Trabajador actualizado' : 'Trabajador agregado', 'success');
+    tabActiva = 'trabajadores';
+    await renderContent();
+  };
+
+  window.eliminarTrabajador = async (id, nombre) => {
+    if (!confirm(`¿Eliminar a ${nombre} del equipo? Sus registros de asistencia ya guardados no se borran, pero ya no aparecerá para marcar asistencia ni en la nómina.`)) return;
+    await DB.deleteTrabajador(id);
+    UI.toast('Trabajador eliminado', 'info');
     tabActiva = 'trabajadores';
     await renderContent();
   };
