@@ -21,7 +21,7 @@ Router.register('dashboard', async (view) => {
 
   // KPIs
   const cotzMes    = cotizaciones.filter(c => c.fecha >= inicioMes && c.estado !== 'Borrador');
-  const facturado  = cotzMes.filter(c => ['Aprobada','Pagado','Parcial'].includes(c.estado)).reduce((s,c) => s + (c.total||0), 0);
+  const facturado  = cotzMes.filter(c => ['Aprobada','Abonado','Pagado','Completado','Factura'].includes(c.estado)).reduce((s,c) => s + (c.total||0), 0);
   const cobrado    = cobros.filter(c => c.fecha >= inicioMes).reduce((s,c) => s + (c.pagado||0), 0);
   const porCobrar  = cobros.filter(c => c.estado !== 'Pagado').reduce((s,c) => s + (c.saldo||0), 0);
   const sinRespuesta = cotizaciones.filter(c => c.estado === 'Enviada').length;
@@ -241,6 +241,7 @@ function estadoBadge(estado) {
     'Enviada':        'badge-amber',
     'Pagado':         'badge-success',
     'Parcial':        'badge-amber',
+    'Factura':        'badge-blue',
   };
   return `<span class="badge ${map[estado]||'badge-gray'}">${estado||'—'}</span>`;
 }

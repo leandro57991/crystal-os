@@ -27,7 +27,9 @@ Router.register('cotizaciones', async (view) => {
       ? `<tr><td colspan="7" class="table-empty">No hay cotizaciones${busqueda ? ` con "${busqueda}"` : ''}</td></tr>`
       : lista.map(c => {
           const abonoInfo = (c.estado === 'Abonado' && c.montoAbono)
-            ? `<div style="font-size:11px;color:var(--text-gray);">Abono: ${fmt(c.montoAbono)}</div>` : '';
+            ? `<div style="font-size:11px;color:var(--text-gray);">Abono: ${fmt(c.montoAbono)}</div>`
+            : (c.estado === 'Pagado' && c.montoAbono)
+            ? `<div style="font-size:11px;color:var(--text-gray);">Cancelado: ${fmt(c.montoAbono)}</div>` : '';
           return `
           <tr onclick="Router.go('ver-cotizacion',{id:'${c.id}'})" style="cursor:pointer;">
             <td><strong>#${c.numero}</strong></td>
@@ -52,7 +54,7 @@ Router.register('cotizaciones', async (view) => {
         }).join('');
   }
 
-  const estados = ['Todos','Borrador','Pendiente','En negociación','Aprobada','Abonado','Completado','Cancelado','Perdida'];
+  const estados = ['Todos','Borrador','Pendiente','En negociación','Aprobada','Abonado','Pagado','Completado','Factura','Cancelado','Perdida'];
 
   view.innerHTML = `
     <div class="page-header">
@@ -651,11 +653,13 @@ Router.register('ver-cotizacion', async (view, params) => {
   const c = await DB.getCotizacion(params.id);
   if (!c) { view.innerHTML = '<div class="empty-state"><h3>Cotización no encontrada</h3></div>'; return; }
 
-  const estados = ['Borrador','Pendiente','En negociación','Aprobada','Abonado','Completado','Cancelado','Perdida'];
+  const estados = ['Borrador','Pendiente','En negociación','Aprobada','Abonado','Pagado','Completado','Factura','Cancelado','Perdida'];
 
   // Calcular cuánto se ha abonado acumulado
   const abonoAcum = c.montoAbono || 0;
   const saldoPend = (c.total||0) - abonoAcum;
+  const pagadoTotal = abonoAcum > 0 && saldoPend <= 0.01;
+  const puedeFacturar = ['Aprobada','Abonado','Pagado','Completado'].includes(c.estado);
 
   view.innerHTML = `
     <div class="page-header">
@@ -669,6 +673,7 @@ Router.register('ver-cotizacion', async (view, params) => {
           ${estados.map(e => `<option ${e===c.estado?'selected':''}>${e}</option>`).join('')}
         </select>
         <button class="btn btn-outline" onclick="Router.go('nueva-cotizacion',{id:'${c.id}'})">${UI.icons.edit} Editar</button>
+        ${puedeFacturar ? `<button class="btn btn-primary" onclick="window.abrirModalFactura()">${UI.icons.pdf || ''} Convertir a factura</button>` : ''}
         <button class="btn btn-secondary" onclick="generarPDFCotizacion('${c.id}')">${UI.icons.pdf} PDF</button>
         <button class="btn btn-whatsapp" onclick="enviarWhatsApp('${c.id}')">${UI.icons.whatsapp} WhatsApp</button>
         <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="window._eliminarVista('${c.id}')">${UI.icons.trash} Eliminar</button>
@@ -686,12 +691,19 @@ Router.register('ver-cotizacion', async (view, params) => {
       <button class="btn btn-primary btn-sm" onclick="window.mostrarContacto()">Contactar cliente</button>
     </div>` : ''}
 
-    <!-- Panel de abono si estado = Abonado -->
-    ${c.estado === 'Abonado' ? `
-    <div style="background:var(--green-light);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
-      <div><div style="font-size:12px;color:var(--text-gray);">Total cotización</div><div style="font-size:18px;font-weight:700;">${fmt(c.total||0)}</div></div>
-      <div><div style="font-size:12px;color:var(--text-gray);">Abonado</div><div style="font-size:18px;font-weight:700;color:var(--success);">${fmt(abonoAcum)}</div></div>
-      <div><div style="font-size:12px;color:var(--text-gray);">Saldo pendiente</div><div style="font-size:18px;font-weight:700;color:var(--amber);">${fmt(saldoPend)}</div></div>
+    <!-- Panel de pago si hay abono o pago total registrado -->
+    ${abonoAcum > 0 ? `
+    <div style="background:var(--green-light);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+      <div style="font-size:13px;font-weight:700;color:${pagadoTotal ? 'var(--success)' : 'var(--amber)'};margin-bottom:12px;">
+        ${pagadoTotal ? 'Pagado en su totalidad' : 'Abono registrado'}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+        <div><div style="font-size:12px;color:var(--text-gray);">Total cotización</div><div style="font-size:18px;font-weight:700;">${fmt(c.total||0)}</div></div>
+        <div><div style="font-size:12px;color:var(--text-gray);">${pagadoTotal ? 'Cancelado' : 'Abonado'}</div><div style="font-size:18px;font-weight:700;color:var(--success);">${fmt(abonoAcum)}</div></div>
+        ${pagadoTotal
+          ? `<div><div style="font-size:12px;color:var(--text-gray);">Saldo</div><div style="font-size:18px;font-weight:700;color:var(--success);">$0.00</div></div>`
+          : `<div><div style="font-size:12px;color:var(--text-gray);">Saldo pendiente</div><div style="font-size:18px;font-weight:700;color:var(--amber);">${fmt(saldoPend)}</div></div>`}
+      </div>
     </div>` : ''}
 
     <div class="card" style="margin-bottom:20px;">
@@ -805,6 +817,27 @@ Router.register('ver-cotizacion', async (view, params) => {
         </div>
       </div>
     </div>
+
+    <!-- Modal: Convertir a factura -->
+    <div class="modal-overlay" id="modal-factura" style="display:none;">
+      <div class="modal" style="max-width:400px;">
+        <div class="modal-header">
+          <div class="modal-title">Convertir a factura</div>
+          <button class="modal-close" onclick="document.getElementById('modal-factura').style.display='none'">${UI.icons.x}</button>
+        </div>
+        <div class="modal-body">
+          <p style="color:var(--text-gray);margin-bottom:16px;">El trabajo de la cotización <strong>#${c.numero}</strong> ya se realizó. Al confirmar, se marcará como facturada y se sincronizará con Cuentas por cobrar.</p>
+          <div class="form-group">
+            <label class="form-label">Número de factura <span class="required">*</span></label>
+            <input id="numero-factura" class="form-input" placeholder="F-${c.numero}" value="F-${c.numero}">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="document.getElementById('modal-factura').style.display='none'">Cancelar</button>
+          <button class="btn btn-primary" onclick="window.confirmarFactura()">Convertir a factura</button>
+        </div>
+      </div>
+    </div>
   `;
 
   function _debeContactar(cot) {
@@ -818,9 +851,16 @@ Router.register('ver-cotizacion', async (view, params) => {
   };
 
   window.cambiarEstado = async (nuevoEstado) => {
-    if (nuevoEstado === 'Abonado') {
-      // Mostrar modal para registrar abono
+    if (nuevoEstado === 'Abonado' || nuevoEstado === 'Pagado') {
+      // Mostrar modal para registrar el pago (el monto determina si queda Abonado o Pagado)
+      document.getElementById('monto-abono').value = nuevoEstado === 'Pagado' ? (saldoPend > 0 ? saldoPend.toFixed(2) : (c.total||0).toFixed(2)) : (abonoAcum || '');
       document.getElementById('modal-abono').style.display = 'flex';
+      document.getElementById('select-estado').value = c.estado; // revertir mientras
+      return;
+    }
+
+    if (nuevoEstado === 'Factura') {
+      window.abrirModalFactura();
       document.getElementById('select-estado').value = c.estado; // revertir mientras
       return;
     }
@@ -851,7 +891,7 @@ Router.register('ver-cotizacion', async (view, params) => {
     if (monto <= 0) { UI.toast('Monto inválido', 'error'); return; }
 
     c.montoAbono  = monto;
-    c.estado      = 'Abonado';
+    c.estado      = monto >= (c.total||0) - 0.01 ? 'Pagado' : 'Abonado';
     c.fechaAbono  = fecha;
     c.metodoAbono = metodo;
     await DB.saveCotizacion(c);
@@ -860,9 +900,53 @@ Router.register('ver-cotizacion', async (view, params) => {
     await _syncCobro(c, monto, fecha, metodo);
 
     document.getElementById('modal-abono').style.display = 'none';
-    UI.toast(`Abono de ${fmt(monto)} registrado`, 'success');
+    UI.toast(c.estado === 'Pagado' ? `Cotización #${c.numero} cancelada en su totalidad` : `Abono de ${fmt(monto)} registrado`, 'success');
     Router.go('ver-cotizacion', { id: c.id });
   };
+
+  window.abrirModalFactura = () => {
+    document.getElementById('modal-factura').style.display = 'flex';
+  };
+
+  window.confirmarFactura = async () => {
+    const numeroFactura = document.getElementById('numero-factura').value.trim();
+    if (!numeroFactura) { UI.toast('Escribe el número de factura', 'error'); return; }
+
+    c.estado         = 'Factura';
+    c.numeroFactura  = numeroFactura;
+    c.fechaFactura   = new Date().toISOString().slice(0,10);
+    await DB.saveCotizacion(c);
+
+    await _syncCobroFactura(c, numeroFactura);
+
+    document.getElementById('modal-factura').style.display = 'none';
+    UI.toast(`Cotización #${c.numero} convertida a factura ${numeroFactura}`, 'success');
+    Router.go('ver-cotizacion', { id: c.id });
+  };
+
+  async function _syncCobroFactura(cot, numeroFactura) {
+    const cobros = await DB.getCobros();
+    let cobro = cobros.find(cb => cb.cotizacionId === cot.id);
+    const pagado = cot.montoAbono || 0;
+    if (!cobro) {
+      cobro = await DB.saveCobro({
+        cotizacionId: cot.id,
+        numero:       cot.numero,
+        factura:      numeroFactura,
+        cliente:      cot.clienteNombre,
+        descripcion:  `Cotización #${cot.numero}`,
+        total:        cot.total || 0,
+        pagado:       pagado,
+        saldo:        (cot.total || 0) - pagado,
+        estado:       pagado >= (cot.total||0) - 0.01 ? 'Pagado' : (pagado > 0 ? 'Parcial' : 'Pendiente'),
+        fecha:        cot.fecha,
+        vencimiento:  '',
+      });
+    } else {
+      cobro.factura = numeroFactura;
+      await DB.saveCobro(cobro);
+    }
+  }
 
   async function _syncCobro(cot, monto, fecha, metodo) {
     const cobros = await DB.getCobros();
