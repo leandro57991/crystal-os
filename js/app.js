@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (Auth.isLoggedIn()) {
     UI.showApp();
     Router.init();
-    if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+    if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
       Notification.requestPermission();
     }
     window.startRemindersPoller();
@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           window.location.hash = '#/cotizaciones';
         }
         Router.init();
-        if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+        if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
           Notification.requestPermission();
         }
         if (!window._pollerStarted) window.startRemindersPoller();
@@ -123,7 +123,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           r.yaNotificado = hm;
           await DB.saveRecordatorio(r);
           
-          if (Notification.permission === 'granted') {
+          if ('Notification' in window && Notification.permission === 'granted') {
             new Notification('Crystal OS — Recordatorio', { body: r.texto });
           } else {
             setTimeout(() => alert('⏰ Recordatorio: ' + r.texto), 100);
