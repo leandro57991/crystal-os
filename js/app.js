@@ -69,20 +69,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (window.confirm('¿Cerrar sesión?')) Auth.logout();
   });
 
-  /* ── MENÚ DE USUARIO DEL HEADER (siempre accesible) ──── */
+  /* ── AVATAR DEL HEADER → CONFIGURACIÓN ────────────────── */
 
-  document.getElementById('header-avatar')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    UI.toggleHeaderUserMenu();
-  });
-  document.getElementById('btn-logout-header')?.addEventListener('click', () => {
-    if (window.confirm('¿Cerrar sesión?')) Auth.logout();
-  });
-  document.addEventListener('click', (e) => {
-    const dropdown = document.getElementById('header-user-dropdown');
-    if (dropdown && dropdown.classList.contains('open') && !dropdown.contains(e.target) && e.target.id !== 'header-avatar') {
-      UI.closeHeaderUserMenu();
-    }
+  document.getElementById('header-avatar')?.addEventListener('click', () => {
+    Router.go('configuracion');
   });
 
   /* ── SIDEBAR MOBILE ─────────────────────────────────── */

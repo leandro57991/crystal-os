@@ -162,22 +162,7 @@
             </svg>
             <span class="notif-dot" id="notif-dot" style="display:none;"></span>
           </button>
-          <div style="position:relative;">
-            <div class="header-avatar" id="header-avatar">A</div>
-            <div class="header-user-dropdown" id="header-user-dropdown">
-              <div class="header-user-dropdown-name" id="header-user-dropdown-name">Usuario</div>
-              <div class="header-user-dropdown-role" id="header-user-dropdown-role">Rol</div>
-              <button class="btn-logout-header" id="btn-logout-header" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                  <polyline points="16 17 21 12 16 7"/>
-                  <line x1="21" y1="12" x2="9" y2="12"/>
-                </svg>
-                Cerrar sesión
-              </button>
-            </div>
-          </div>
+          <div class="header-avatar" id="header-avatar" title="Configuración">A</div>
         </div>
       </header>
 
@@ -189,6 +174,9 @@
           </div>
         </div>
       </main>
+
+      <!-- Navegación inferior (solo celular) -->
+      <nav id="mobile-bottom-nav" class="bottom-nav"></nav>
 
     </div><!-- /wrapper derecho -->
   </div><!-- /main-layout -->

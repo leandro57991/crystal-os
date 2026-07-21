@@ -134,9 +134,19 @@ Router.register('configuracion', async (view) => {
         </div>
 
         <button class="btn btn-primary" onclick="window.guardarPerfil()" style="margin-top:8px;">Guardar cambios</button>
+
+        <div style="border-top:1px solid var(--border);margin-top:24px;padding-top:16px;">
+          <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="window.cerrarSesion()">
+            ${UI.icons.logout} Cerrar sesión
+          </button>
+        </div>
       </div>
     `;
   }
+
+  window.cerrarSesion = () => {
+    if (confirm('¿Cerrar sesión?')) Auth.logout();
+  };
 
   window.cargarFoto = (input) => {
     const file = input.files[0];

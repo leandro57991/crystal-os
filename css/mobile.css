@@ -90,11 +90,14 @@
     left: 0;
     padding: 0 16px;
   }
-  #header .hamburger { display: flex; }
+  /* La navegación pasó a la barra inferior; el ícono ☰ ya no se usa */
+  #header .hamburger { display: none; }
+
+  .bottom-nav { display: flex; }
 
   #content-area {
     margin-left: 0;
-    padding: 20px 16px;
+    padding: 20px 16px calc(60px + 20px);
   }
 
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
@@ -131,7 +134,7 @@
   }
 
   /* Área de contenido */
-  #content-area { padding: 12px 10px; }
+  #content-area { padding: 12px 10px calc(60px + 12px); }
 
   /* Cards con menos padding */
   .card {
@@ -238,7 +241,7 @@
 
   /* Toast — ancho completo */
   #toast-container {
-    bottom: 12px;
+    bottom: calc(60px + 12px);
     right: 10px;
     left: 10px;
   }
