@@ -520,7 +520,7 @@ Router.register('nomina', async (view) => {
         <div style="margin-top:12px;font-size:12px;color:var(--text-gray);">
           ⚠️ Tardanza (por día): 31–45 min → descuento de $2.50. Más de 45 min → $5.00 + valor proporcional de los minutos adicionales (según tarifa por hora del trabajador). Se acumula día a día en todo el periodo — aplica igual para llegadas tarde, salidas tempranas o permisos.<br>
           🌙 Noche: marcar el check "Noche" registra la noche completa según la tarifa configurada; si se indican horas, se paga proporcional.<br>
-          ⏱️ Horas extra: se valoran a la tarifa/hora configurada, o si no hay una, al ingreso diario ÷ 8 horas.<br>
+          ⏱️ Horas extra: se valoran a la tarifa/hora configurada; si no hay una, a la Tarifa Noche (monto pleno por hora); si tampoco hay, al ingreso diario ÷ 8 horas.<br>
           💼 Trabajadores Quincenales asumen su "Salario Fijo". Trabajadores Semanales suman según días/horas trabajadas.
         </div>
       </div>
@@ -553,10 +553,16 @@ Router.register('nomina', async (view) => {
       let diasN=0, diasNoche=0, descAlm=0, vales=0, minTard=0;
       let sumHD=0, sumHN=0, horasExtrasTotal=0, brutoDias=0, descTard=0;
 
-      // Tarifa por hora: si no hay una configurada, se deriva del ingreso diario ÷ horas del día
-      // (o del salario fijo quincenal ÷ ~15 días ÷ 8h para el personal quincenal).
-      const tarifaHr = t.tarifaHora > 0 ? t.tarifaHora
+      // Tarifa por hora extra: usa "Tarifa/Hora" si está configurada; si no, la misma
+      // "Tarifa Noche" (monto pleno por hora, sin dividir — así lo paga la empresa);
+      // si tampoco hay noche, se deriva del ingreso diario ÷ horas del día.
+      const tarifaHrExtra = t.tarifaHora > 0 ? t.tarifaHora
+        : t.tarifaNoche > 0 ? t.tarifaNoche
         : (t.tarifaDia > 0 ? (t.tarifaDia / 8) : (t.salarioFijo > 0 ? (t.salarioFijo / 15 / 8) : 0));
+
+      // Tarifa por hora "normal" (para valorar tardanza/permisos): siempre ingreso diario ÷ 8h,
+      // nunca la tarifa premium de noche/extra.
+      const tarifaHrNormal = t.tarifaDia > 0 ? (t.tarifaDia / 8) : (t.salarioFijo > 0 ? (t.salarioFijo / 15 / 8) : 0);
 
       regs.forEach(a => {
         let hD = a.horasDia !== undefined ? a.horasDia : 8;
@@ -584,13 +590,13 @@ Router.register('nomina', async (view) => {
         } else {
            if (hD > 0) brutoDias += (t.tarifaDia || 0);
            // Horas extras: ingreso diario ÷ horas trabajadas = tarifa por hora; se suma por cada hora extra.
-           if (hE > 0) brutoDias += (hE * tarifaHr);
+           if (hE > 0) brutoDias += (hE * tarifaHrExtra);
         }
 
         // Tardanza / salida temprano / permisos: > 45 min = $5 + valor proporcional del resto en $;
         // 31–45 min = $2.50; el saldo se acumula día a día durante todo el periodo.
         if (tard > 45) {
-          descTard += 5.00 + ((tard - 45) / 60) * tarifaHr;
+          descTard += 5.00 + ((tard - 45) / 60) * tarifaHrNormal;
         } else if (tard > 30) {
           descTard += 2.50;
         }
