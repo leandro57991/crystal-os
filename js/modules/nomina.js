@@ -25,6 +25,21 @@ Router.register('nomina', async (view) => {
     return Math.max(0, entradaMin - esperadoMin);
   }
 
+  // Tarifa por hora "normal" del trabajador (ingreso diario ÷ 8h; nunca la tarifa premium de noche/extra).
+  function tarifaHoraNormal(t) {
+    if (t.tarifaDia > 0) return t.tarifaDia / 8;
+    if (t.salarioFijo > 0) return t.salarioFijo / 15 / 8;
+    return 0;
+  }
+
+  // Descuento por tardanza/permiso/salida temprano: 31–45 min = $2.50; más de 45 min = $5.00
+  // + el valor proporcional de los minutos adicionales, a la tarifa por hora normal del trabajador.
+  function calcDeduccionTardanza(minutos, tHrNormal) {
+    if (minutos > 45) return 5.00 + ((minutos - 45) / 60) * tHrNormal;
+    if (minutos > 30) return 2.50;
+    return 0;
+  }
+
   view.innerHTML = `
     <div class="page-header">
       <div class="page-title">Nómina y Asistencia</div>
@@ -260,6 +275,7 @@ Router.register('nomina', async (view) => {
                     <td>
                       <input type="number" id="tar-${t.id}" class="form-input" style="width:60px;" min="0" value="${ausente?0:(a.tardanza||0)}" ${ausente?'disabled':''}>
                       ${!ausente && tardMin > 0 ? `<div style="font-size:11px;color:var(--amber);">${tardMin} min</div>` : ''}
+                      ${!ausente && tardMin > 30 ? `<div style="font-size:11px;color:var(--danger);">-${fmt(calcDeduccionTardanza(tardMin, tarifaHoraNormal(t)))}</div>` : ''}
                     </td>
                     <td><label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" id="alm-${t.id}" ${a.almuerzo?'checked':''} ${ausente?'disabled':''}> Sí</label></td>
                     <td><input type="number" id="vale-${t.id}" class="form-input" style="width:70px;" min="0" step="0.01" value="${a.vale||0}" placeholder="0.00"></td>
@@ -562,7 +578,7 @@ Router.register('nomina', async (view) => {
 
       // Tarifa por hora "normal" (para valorar tardanza/permisos): siempre ingreso diario ÷ 8h,
       // nunca la tarifa premium de noche/extra.
-      const tarifaHrNormal = t.tarifaDia > 0 ? (t.tarifaDia / 8) : (t.salarioFijo > 0 ? (t.salarioFijo / 15 / 8) : 0);
+      const tarifaHrNormal = tarifaHoraNormal(t);
 
       regs.forEach(a => {
         let hD = a.horasDia !== undefined ? a.horasDia : 8;
@@ -591,13 +607,8 @@ Router.register('nomina', async (view) => {
         // Horas extras: Tarifa/Hora configurada, o si no, Tarifa Noche, o si no, ingreso diario ÷ 8.
         if (hE > 0) brutoDias += (hE * tarifaHrExtra);
 
-        // Tardanza / salida temprano / permisos: > 45 min = $5 + valor proporcional del resto en $;
-        // 31–45 min = $2.50; el saldo se acumula día a día durante todo el periodo.
-        if (tard > 45) {
-          descTard += 5.00 + ((tard - 45) / 60) * tarifaHrNormal;
-        } else if (tard > 30) {
-          descTard += 2.50;
-        }
+        // Tardanza / salida temprano / permisos, acumulado día a día durante todo el periodo.
+        descTard += calcDeduccionTardanza(tard, tarifaHrNormal);
       });
 
       let bruto = brutoDias;
