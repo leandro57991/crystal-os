@@ -585,13 +585,11 @@ Router.register('nomina', async (view) => {
           brutoDias += (hN > 0) ? ((hN / 8) * (t.tarifaNoche || 0)) : (t.tarifaNoche || 0);
         }
 
-        if (t.tarifaHora > 0) {
-           brutoDias += (hD * t.tarifaHora) + (hE * t.tarifaHora); // Extras a tarifa normal (1x)
-        } else {
-           if (hD > 0) brutoDias += (t.tarifaDia || 0);
-           // Horas extras: ingreso diario ÷ horas trabajadas = tarifa por hora; se suma por cada hora extra.
-           if (hE > 0) brutoDias += (hE * tarifaHrExtra);
-        }
+        // Día normal: siempre la tarifa diaria fija, sin importar si hay Tarifa/Hora configurada
+        // (la Tarifa/Hora sólo aplica a las horas extra, nunca reemplaza el pago del día).
+        if (hD > 0) brutoDias += (t.tarifaDia || 0);
+        // Horas extras: Tarifa/Hora configurada, o si no, Tarifa Noche, o si no, ingreso diario ÷ 8.
+        if (hE > 0) brutoDias += (hE * tarifaHrExtra);
 
         // Tardanza / salida temprano / permisos: > 45 min = $5 + valor proporcional del resto en $;
         // 31–45 min = $2.50; el saldo se acumula día a día durante todo el periodo.
@@ -613,7 +611,7 @@ Router.register('nomina', async (view) => {
       totalGlobal += neto;
 
       const lblTarifa = t.tipoCobro === 'Quincenal' ? `Fijo: ${fmt(t.salarioFijo)}` :
-                        (t.tarifaHora > 0 ? `Hr: ${fmt(t.tarifaHora)}` : `Día: ${fmt(t.tarifaDia)}`);
+                        `Día: ${fmt(t.tarifaDia)}` + (tarifaHrExtra > 0 ? ` <br><small style="color:var(--text-gray);">Extra/h: ${fmt(tarifaHrExtra)}</small>` : '');
 
       let extraLabels = [];
       if (diasNoche > 0) extraLabels.push(`${diasNoche} Noche(s)${sumHN>0?` (${sumHN}h)`:''}`);
