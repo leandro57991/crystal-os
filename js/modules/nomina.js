@@ -25,6 +25,21 @@ Router.register('nomina', async (view) => {
     return Math.max(0, entradaMin - esperadoMin);
   }
 
+  // Tarifa por hora "normal" del trabajador (ingreso diario ÷ 8h; nunca la tarifa premium de noche/extra).
+  function tarifaHoraNormal(t) {
+    if (t.tarifaDia > 0) return t.tarifaDia / 8;
+    if (t.salarioFijo > 0) return t.salarioFijo / 15 / 8;
+    return 0;
+  }
+
+  // Descuento por tardanza/permiso/salida temprano: 31–45 min = $2.50; más de 45 min = $5.00
+  // + el valor proporcional de los minutos adicionales, a la tarifa por hora normal del trabajador.
+  function calcDeduccionTardanza(minutos, tHrNormal) {
+    if (minutos > 45) return 5.00 + ((minutos - 45) / 60) * tHrNormal;
+    if (minutos > 30) return 2.50;
+    return 0;
+  }
+
   view.innerHTML = `
     <div class="page-header">
       <div class="page-title">Nómina y Asistencia</div>
@@ -128,8 +143,19 @@ Router.register('nomina', async (view) => {
               <input id="edit-horasDia" class="form-input" type="number" min="0" step="0.5" placeholder="Ej. 8">
             </div>
             <div class="form-group">
-              <label class="form-label">Horas (Noche/Extra)</label>
-              <input id="edit-horasNoche" class="form-input" type="number" min="0" step="0.5" placeholder="Ej. 2">
+              <label class="form-label">Horas Extras</label>
+              <input id="edit-horasExtras" class="form-input" type="number" min="0" step="0.5" placeholder="Ej. 2">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="display:flex; flex-direction:column; justify-content:flex-end;">
+              <label style="display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:8px;">
+                <input id="edit-nocheCompleta" type="checkbox" onchange="window._toggleNocheModal()"> Trabajó de noche
+              </label>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Horas Noche (opcional)</label>
+              <input id="edit-horasNoche" class="form-input" type="number" min="0" step="0.5" placeholder="Vacío = noche completa">
             </div>
           </div>
           <div class="form-row">
@@ -222,7 +248,7 @@ Router.register('nomina', async (view) => {
           <table class="table">
             <thead><tr>
               <th>Trabajador</th><th>Rol</th><th>Asistió</th><th>Entrada</th><th>Salida</th>
-              <th>Horas Día</th><th>Hrs Noche/Ex</th>
+              <th>Horas Día</th><th>Noche</th><th>Hrs Noche</th><th>Hrs Extra</th>
               <th>Tardanza</th><th>Almuerzo</th><th>Vale ($)</th><th>Estado</th><th>Acción</th>
             </tr></thead>
             <tbody>
@@ -243,10 +269,13 @@ Router.register('nomina', async (view) => {
                     <td><input type="time" id="ent-${t.id}" class="form-input" style="width:100px;" value="${a.entrada||'08:00'}" ${ausente?'disabled':''}></td>
                     <td><input type="time" id="sal-${t.id}" class="form-input" style="width:100px;" value="${a.salida||'17:00'}" ${ausente?'disabled':''}></td>
                     <td><input type="number" id="hD-${t.id}" class="form-input" style="width:60px;" min="0" step="0.5" placeholder="8" value="${ausente?0:(a.horasDia!==undefined?a.horasDia:8)}" ${ausente?'disabled':''}></td>
-                    <td><input type="number" id="hN-${t.id}" class="form-input" style="width:60px;" min="0" step="0.5" placeholder="0" value="${ausente?0:(a.horasNoche||0)}" ${ausente?'disabled':''}></td>
+                    <td><input type="checkbox" id="nC-${t.id}" ${ausente?'disabled':''} ${a.nocheCompleta?'checked':''} onchange="window._toggleHorasNocheFila('${t.id}')"></td>
+                    <td><input type="number" id="hN-${t.id}" class="form-input" style="width:70px;" min="0" step="0.5" placeholder="Completa" value="${ausente?'':(a.horasNoche||'')}" ${(ausente||!a.nocheCompleta)?'disabled':''}></td>
+                    <td><input type="number" id="hE-${t.id}" class="form-input" style="width:60px;" min="0" step="0.5" placeholder="0" value="${ausente?0:(a.horasExtras||0)}" ${ausente?'disabled':''}></td>
                     <td>
                       <input type="number" id="tar-${t.id}" class="form-input" style="width:60px;" min="0" value="${ausente?0:(a.tardanza||0)}" ${ausente?'disabled':''}>
                       ${!ausente && tardMin > 0 ? `<div style="font-size:11px;color:var(--amber);">${tardMin} min</div>` : ''}
+                      ${!ausente && tardMin > 30 ? `<div style="font-size:11px;color:var(--danger);">-${fmt(calcDeduccionTardanza(tardMin, tarifaHoraNormal(t)))}</div>` : ''}
                     </td>
                     <td><label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" id="alm-${t.id}" ${a.almuerzo?'checked':''} ${ausente?'disabled':''}> Sí</label></td>
                     <td><input type="number" id="vale-${t.id}" class="form-input" style="width:70px;" min="0" step="0.01" value="${a.vale||0}" placeholder="0.00"></td>
@@ -269,12 +298,20 @@ Router.register('nomina', async (view) => {
         </div>
 
         <div style="margin-top:12px;padding:12px;background:var(--green-light);border-radius:8px;font-size:13px;color:var(--text-gray);">
-          ⏰ Horario por defecto: <strong>08:00 – 17:00</strong>. La tardanza se calcula automáticamente desde las 08:00.
-          Acumulado semanal &gt; 30 min → descuento de $5.
+          ⏰ Horario por defecto: <strong>08:00 – 17:00</strong>. La tardanza se calcula automáticamente desde las 08:00, pero se puede ajustar manualmente (llegadas tarde, salidas tempranas o permisos).
+          Descuento: 31–45 min → $2.50. Más de 45 min → $5.00 + el valor de las horas adicionales (ver pestaña Cálculo de Nómina).
         </div>
       </div>
     `;
   }
+
+  window._toggleHorasNocheFila = (trabId) => {
+    const nC = document.getElementById(`nC-${trabId}`)?.checked || false;
+    const hN = document.getElementById(`hN-${trabId}`);
+    if (!hN) return;
+    hN.disabled = !nC;
+    if (!nC) hN.value = '';
+  };
 
   function bindAsistencia(trabajadores) {
     trabajadores.forEach(t => {
@@ -288,7 +325,9 @@ Router.register('nomina', async (view) => {
     const entrada  = ausente ? '' : (document.getElementById(`ent-${trabId}`)?.value  || '08:00');
     const salida   = ausente ? '' : (document.getElementById(`sal-${trabId}`)?.value  || '17:00');
     const horasDia = ausente ? 0 : parseFloat(document.getElementById(`hD-${trabId}`)?.value)||0;
-    const horasNoche = ausente ? 0 : parseFloat(document.getElementById(`hN-${trabId}`)?.value)||0;
+    const nocheCompleta = ausente ? false : document.getElementById(`nC-${trabId}`)?.checked || false;
+    const horasNoche = (ausente || !nocheCompleta) ? 0 : (parseFloat(document.getElementById(`hN-${trabId}`)?.value)||0);
+    const horasExtras = ausente ? 0 : parseFloat(document.getElementById(`hE-${trabId}`)?.value)||0;
     const tardInput= ausente ? 0 : parseInt(document.getElementById(`tar-${trabId}`)?.value)||0;
     const almuerzo = ausente ? false : document.getElementById(`alm-${trabId}`)?.checked;
     const vale     = parseFloat(document.getElementById(`vale-${trabId}`)?.value)||0;
@@ -304,7 +343,7 @@ Router.register('nomina', async (view) => {
       id:           existente?.id,
       trabajadorId: trabId,
       fecha:        fechaActual,
-      entrada, salida, horasDia, horasNoche, tardanza, almuerzo, vale, ausente,
+      entrada, salida, horasDia, nocheCompleta, horasNoche, horasExtras, tardanza, almuerzo, vale, ausente,
     });
     UI.toast(ausente ? 'Falta registrada' : 'Asistencia guardada', ausente ? 'info' : 'success');
     await renderContent();
@@ -312,14 +351,16 @@ Router.register('nomina', async (view) => {
 
   window.toggleAusente = (trabId) => {
     const ausente = document.getElementById(`ausente-${trabId}`)?.checked || false;
-    ['ent','sal','hD','hN','tar'].forEach(prefix => {
+    ['ent','sal','hD','nC','hE','tar'].forEach(prefix => {
       const el = document.getElementById(`${prefix}-${trabId}`);
       if (!el) return;
       el.disabled = ausente;
-      if (ausente && (prefix === 'hD' || prefix === 'hN' || prefix === 'tar')) el.value = 0;
+      if (ausente && (prefix === 'hD' || prefix === 'hE' || prefix === 'tar')) el.value = 0;
+      if (ausente && prefix === 'nC') el.checked = false;
     });
     const alm = document.getElementById(`alm-${trabId}`);
     if (alm) { alm.disabled = ausente; if (ausente) alm.checked = false; }
+    window._toggleHorasNocheFila(trabId);
   };
 
   window.eliminarAsistencia = async (registroId) => {
@@ -354,7 +395,9 @@ Router.register('nomina', async (view) => {
     document.getElementById('edit-entrada').value    = reg.entrada || '08:00';
     document.getElementById('edit-salida').value     = reg.salida  || '17:00';
     document.getElementById('edit-horasDia').value   = reg.horasDia!==undefined?reg.horasDia:8;
-    document.getElementById('edit-horasNoche').value = reg.horasNoche || 0;
+    document.getElementById('edit-nocheCompleta').checked = reg.nocheCompleta || false;
+    document.getElementById('edit-horasNoche').value = reg.horasNoche || '';
+    document.getElementById('edit-horasExtras').value = reg.horasExtras || 0;
     document.getElementById('edit-tardanza').value   = reg.tardanza || 0;
     document.getElementById('edit-vale').value       = reg.vale || 0;
     document.getElementById('edit-almuerzo').checked = reg.almuerzo || false;
@@ -362,21 +405,33 @@ Router.register('nomina', async (view) => {
     document.getElementById('edit-notas').value      = reg.notas    || '';
     document.getElementById('btn-eliminar-asist').style.display = reg.id ? '' : 'none';
     window._toggleAusenteModal();
+    window._toggleNocheModal();
     document.getElementById('modal-editar-asist').style.display = 'flex';
   };
 
   window._toggleAusenteModal = () => {
     const ausente = document.getElementById('edit-ausente').checked;
-    ['edit-entrada','edit-salida','edit-horasDia','edit-horasNoche','edit-tardanza'].forEach(id => {
+    ['edit-entrada','edit-salida','edit-horasDia','edit-horasExtras','edit-tardanza'].forEach(id => {
       document.getElementById(id).disabled = ausente;
     });
+    document.getElementById('edit-nocheCompleta').disabled = ausente;
     document.getElementById('edit-almuerzo').disabled = ausente;
     if (ausente) {
       document.getElementById('edit-horasDia').value   = 0;
-      document.getElementById('edit-horasNoche').value = 0;
+      document.getElementById('edit-nocheCompleta').checked = false;
+      document.getElementById('edit-horasNoche').value = '';
+      document.getElementById('edit-horasExtras').value = 0;
       document.getElementById('edit-tardanza').value   = 0;
       document.getElementById('edit-almuerzo').checked = false;
     }
+    window._toggleNocheModal();
+  };
+
+  window._toggleNocheModal = () => {
+    const ausente = document.getElementById('edit-ausente').checked;
+    const noche = document.getElementById('edit-nocheCompleta').checked;
+    document.getElementById('edit-horasNoche').disabled = ausente || !noche;
+    if (!noche) document.getElementById('edit-horasNoche').value = '';
   };
 
   window.guardarEdicionAsist = async () => {
@@ -386,7 +441,9 @@ Router.register('nomina', async (view) => {
     const entrada   = ausente ? '' : document.getElementById('edit-entrada').value;
     const salida    = ausente ? '' : document.getElementById('edit-salida').value;
     const horasDia  = ausente ? 0 : parseFloat(document.getElementById('edit-horasDia').value)||0;
-    const horasNoche= ausente ? 0 : parseFloat(document.getElementById('edit-horasNoche').value)||0;
+    const nocheCompleta = ausente ? false : document.getElementById('edit-nocheCompleta').checked;
+    const horasNoche = (ausente || !nocheCompleta) ? 0 : (parseFloat(document.getElementById('edit-horasNoche').value)||0);
+    const horasExtras = ausente ? 0 : parseFloat(document.getElementById('edit-horasExtras').value)||0;
     const tardanza  = ausente ? 0 : parseInt(document.getElementById('edit-tardanza').value)||0;
     const vale      = parseFloat(document.getElementById('edit-vale').value)||0;
     const almuerzo  = ausente ? false : document.getElementById('edit-almuerzo').checked;
@@ -396,7 +453,7 @@ Router.register('nomina', async (view) => {
       id:           registroId || undefined,
       trabajadorId: trabId,
       fecha:        fechaActual,
-      entrada, salida, horasDia, horasNoche, tardanza, almuerzo, vale, ausente, notas,
+      entrada, salida, horasDia, nocheCompleta, horasNoche, horasExtras, tardanza, almuerzo, vale, ausente, notas,
     });
     document.getElementById('modal-editar-asist').style.display = 'none';
     UI.toast('Registro actualizado', 'success');
@@ -477,7 +534,9 @@ Router.register('nomina', async (view) => {
           </table>
         </div>
         <div style="margin-top:12px;font-size:12px;color:var(--text-gray);">
-          ⚠️ Tardanza: si la suma en el rango es &gt;= 30 min → descuento de $2.50. Si es &gt;= 45 min → descuento de $5.00.<br>
+          ⚠️ Tardanza (por día): 31–45 min → descuento de $2.50. Más de 45 min → $5.00 + valor proporcional de los minutos adicionales (según tarifa por hora del trabajador). Se acumula día a día en todo el periodo — aplica igual para llegadas tarde, salidas tempranas o permisos.<br>
+          🌙 Noche: marcar el check "Noche" registra la noche completa según la tarifa configurada; si se indican horas, se paga proporcional.<br>
+          ⏱️ Horas extra: se valoran a la tarifa/hora configurada; si no hay una, a la Tarifa Noche (monto pleno por hora); si tampoco hay, al ingreso diario ÷ 8 horas.<br>
           💼 Trabajadores Quincenales asumen su "Salario Fijo". Trabajadores Semanales suman según días/horas trabajadas.
         </div>
       </div>
@@ -508,45 +567,67 @@ Router.register('nomina', async (view) => {
     tbody.innerHTML = trabsFiltrados.map(t => {
       const regs = asistencia.filter(a => a.trabajadorId === t.id);
       let diasN=0, diasNoche=0, descAlm=0, vales=0, minTard=0;
-      let sumHD=0, sumHN=0, brutoDias=0;
+      let sumHD=0, sumHN=0, horasExtrasTotal=0, brutoDias=0, descTard=0;
+
+      // Tarifa por hora extra: usa "Tarifa/Hora" si está configurada; si no, la misma
+      // "Tarifa Noche" (monto pleno por hora, sin dividir — así lo paga la empresa);
+      // si tampoco hay noche, se deriva del ingreso diario ÷ horas del día.
+      const tarifaHrExtra = t.tarifaHora > 0 ? t.tarifaHora
+        : t.tarifaNoche > 0 ? t.tarifaNoche
+        : (t.tarifaDia > 0 ? (t.tarifaDia / 8) : (t.salarioFijo > 0 ? (t.salarioFijo / 15 / 8) : 0));
+
+      // Tarifa por hora "normal" (para valorar tardanza/permisos): siempre ingreso diario ÷ 8h,
+      // nunca la tarifa premium de noche/extra.
+      const tarifaHrNormal = tarifaHoraNormal(t);
 
       regs.forEach(a => {
         let hD = a.horasDia !== undefined ? a.horasDia : 8;
+        let nC = a.nocheCompleta || false;
         let hN = a.horasNoche || 0;
-        sumHD += hD; sumHN += hN;
+        let hE = a.horasExtras || 0;
+        let tard = parseInt(a.tardanza||0);
+
+        sumHD += hD;
+        horasExtrasTotal += hE;
+
         if (hD > 0) diasN++;
-        if (hN > 0) diasNoche++;
+        if (nC) { diasNoche++; sumHN += (hN > 0 ? hN : 8); }
         if (a.almuerzo) descAlm += 5;
         vales   += parseFloat(a.vale||0);
-        minTard += parseInt(a.tardanza||0);
+        minTard += tard;
 
-        if (t.tarifaHora > 0) {
-           brutoDias += (hD * t.tarifaHora) + (hN * t.tarifaHora * 1.5); // 1.5x extras
-        } else {
-           if (hD > 0) brutoDias += (t.tarifaDia || 0);
-           if (hN > 0) brutoDias += (t.tarifaNoche || 0);
+        // Noche: check simple = noche completa. Si se indican horas, se paga proporcional (tarifaNoche ÷ 8h).
+        if (nC) {
+          brutoDias += (hN > 0) ? ((hN / 8) * (t.tarifaNoche || 0)) : (t.tarifaNoche || 0);
         }
+
+        // Día normal: siempre la tarifa diaria fija, sin importar si hay Tarifa/Hora configurada
+        // (la Tarifa/Hora sólo aplica a las horas extra, nunca reemplaza el pago del día).
+        if (hD > 0) brutoDias += (t.tarifaDia || 0);
+        // Horas extras: Tarifa/Hora configurada, o si no, Tarifa Noche, o si no, ingreso diario ÷ 8.
+        if (hE > 0) brutoDias += (hE * tarifaHrExtra);
+
+        // Tardanza / salida temprano / permisos, acumulado día a día durante todo el periodo.
+        descTard += calcDeduccionTardanza(tard, tarifaHrNormal);
       });
-      let descTard = 0;
-      if (minTard >= 45) {
-         descTard = 5;
-      } else if (minTard >= 30) {
-         descTard = 2.50;
-      }
-      
+
       let bruto = brutoDias;
       if (t.tipoCobro === 'Quincenal' && t.salarioFijo > 0) {
-        bruto = t.salarioFijo;
+        bruto = t.salarioFijo + (brutoDias - (diasN * (t.tarifaDia || 0))); // Sumar extras/noches al salario fijo
       } else if (t.tipoCobro === 'Semanal' && t.tarifaSemana > 0 && diasN >= 5) {
-        bruto = t.tarifaSemana;
+        bruto = t.tarifaSemana + (brutoDias - (diasN * (t.tarifaDia || 0))); // Sumar extras/noches a la semana
       }
 
       const neto = Math.max(0, bruto - descAlm - descTard - vales);
       totalGlobal += neto;
-      
-      const lblTarifa = t.tipoCobro === 'Quincenal' ? `Fijo: ${fmt(t.salarioFijo)}` : 
-                        (t.tarifaHora > 0 ? `Hr: ${fmt(t.tarifaHora)}` : `Día: ${fmt(t.tarifaDia)}`);
-      const lblDias = `${diasN}d (${sumHD}h)${sumHN>0?` + ${sumHN}hx`:''}`;
+
+      const lblTarifa = t.tipoCobro === 'Quincenal' ? `Fijo: ${fmt(t.salarioFijo)}` :
+                        `Día: ${fmt(t.tarifaDia)}` + (tarifaHrExtra > 0 ? ` <br><small style="color:var(--text-gray);">Extra/h: ${fmt(tarifaHrExtra)}</small>` : '');
+
+      let extraLabels = [];
+      if (diasNoche > 0) extraLabels.push(`${diasNoche} Noche(s)${sumHN>0?` (${sumHN}h)`:''}`);
+      if (horasExtrasTotal > 0) extraLabels.push(`${horasExtrasTotal} h/Ex`);
+      const lblDias = `${diasN}d (${sumHD}h)` + (extraLabels.length ? `<br><small style="color:var(--green-main);">${extraLabels.join(' | ')}</small>` : '');
 
       return `<tr>
         <td><strong>${t.nombre}</strong><br><span style="font-size:11px;color:var(--text-gray);">${t.rol} - ${t.tipoCobro||'Semanal'}</span></td>
@@ -555,7 +636,7 @@ Router.register('nomina', async (view) => {
         <td style="color:var(--danger);">${descAlm>0?'-'+fmt(descAlm):'—'}</td>
         <td style="color:var(--danger);">${descTard>0?'-'+fmt(descTard):'—'}</td>
         <td style="color:var(--danger);">${vales>0?'-'+fmt(vales):'—'}</td>
-        <td style="color:var(--text-gray);font-size:12px;">${minTard} min${minTard>30?' ⚠️':''}</td>
+        <td style="color:var(--text-gray);font-size:12px;">${minTard} min${minTard>=30?' ⚠️':''}</td>
         <td style="font-weight:700;color:var(--green-main);font-size:15px;">${fmt(neto)}</td>
       </tr>`;
     }).join('');
@@ -577,7 +658,7 @@ Router.register('nomina', async (view) => {
     // KPIs globales
     const totalDias    = asistencia.length;
     const totalTardMn  = asistencia.reduce((s,a) => s+parseInt(a.tardanza||0), 0);
-    const totalNoche   = asistencia.filter(a => a.noche).length;
+    const totalNoche   = asistencia.filter(a => a.nocheCompleta).length;
     const descTardanza = asistencia.filter(a => { /* por trabajador por semana */ return false; }).length; // simplificado
 
     // Por trabajador

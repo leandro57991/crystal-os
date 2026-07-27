@@ -224,10 +224,10 @@ async function getCobros() { return getAll('cobros'); }
 async function registrarPago(cobroId, monto, fecha, metodo, notas) {
   const cobro = await getOne('cobros', cobroId);
   if (!cobro) throw new Error('Cobro no encontrado');
-  const pagado = (cobro.pagado || 0) + parseFloat(monto);
+  const pagado = Math.max((cobro.pagado || 0) + parseFloat(monto), 0);
   cobro.pagado = pagado;
   cobro.saldo  = cobro.total - pagado;
-  cobro.estado = cobro.saldo <= 0.01 ? 'Pagado' : 'Parcial';
+  cobro.estado = cobro.saldo <= 0.01 ? 'Pagado' : (pagado > 0 ? 'Parcial' : 'Pendiente');
   await save('cobros', cobro);
   return save('pagos', { cobroId, monto: parseFloat(monto), fecha, metodo, notas });
 }

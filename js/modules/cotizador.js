@@ -9,6 +9,8 @@ Router.register('cotizaciones', async (view) => {
   let cotizaciones = await DB.getCotizaciones();
   let filtroEstado = 'Todos';
   let busqueda     = '';
+  let fechaDesde   = '';
+  let fechaHasta   = '';
 
   function render() {
     let lista = [...cotizaciones].sort((a,b) => (b.numero||0)-(a.numero||0));
@@ -20,11 +22,13 @@ Router.register('cotizaciones', async (view) => {
         String(c.numero).includes(q)
       );
     }
+    if (fechaDesde) lista = lista.filter(c => c.fecha && c.fecha >= fechaDesde);
+    if (fechaHasta) lista = lista.filter(c => c.fecha && c.fecha <= fechaHasta);
 
     const table = document.getElementById('cotiz-table-body');
     if (!table) return;
     table.innerHTML = lista.length === 0
-      ? `<tr><td colspan="7" class="table-empty">No hay cotizaciones${busqueda ? ` con "${busqueda}"` : ''}</td></tr>`
+      ? `<tr><td colspan="6" class="table-empty">No hay cotizaciones${busqueda ? ` con "${busqueda}"` : ''}</td></tr>`
       : lista.map(c => {
           const abonoInfo = (c.estado === 'Abonado' && c.montoAbono)
             ? `<div style="font-size:11px;color:var(--text-gray);">Abono: ${fmt(c.montoAbono)}</div>`
@@ -39,7 +43,6 @@ Router.register('cotizaciones', async (view) => {
               ${c.abono60 > 0 ? `<div style="font-size:11px;color:var(--green-mid);">60%: ${fmt(c.abono60)}</div>` : ''}
             </td>
             <td>${estadoBadge(c.estado)}${abonoInfo}</td>
-            <td>${c.vendedor||'—'}</td>
             <td style="color:var(--text-gray);">${c.fecha||'—'}</td>
             <td onclick="event.stopPropagation()">
               <div style="display:flex;gap:4px;">
@@ -78,11 +81,18 @@ Router.register('cotizaciones', async (view) => {
           ${UI.icons.search}
           <input id="cotiz-search" type="text" placeholder="Buscar cliente o #cotización…" value="${busqueda}">
         </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <label style="font-size:12px;color:var(--text-gray);white-space:nowrap;">Desde</label>
+          <input id="cotiz-fecha-desde" class="form-input" type="date" style="width:auto;padding:6px 8px;" value="${fechaDesde}">
+          <label style="font-size:12px;color:var(--text-gray);white-space:nowrap;">Hasta</label>
+          <input id="cotiz-fecha-hasta" class="form-input" type="date" style="width:auto;padding:6px 8px;" value="${fechaHasta}">
+          <button class="btn btn-ghost btn-sm" id="cotiz-fecha-clear" type="button">Limpiar fechas</button>
+        </div>
       </div>
       <div class="table-wrapper">
         <table class="table">
           <thead><tr>
-            <th>#</th><th>Cliente</th><th>Total</th><th>Estado</th><th>Vendedor</th><th>Fecha</th><th>Acciones</th>
+            <th>#</th><th>Cliente</th><th>Total</th><th>Estado</th><th>Fecha</th><th>Acciones</th>
           </tr></thead>
           <tbody id="cotiz-table-body"></tbody>
         </table>
@@ -102,6 +112,24 @@ Router.register('cotizaciones', async (view) => {
 
   document.getElementById('cotiz-search').addEventListener('input', e => {
     busqueda = e.target.value;
+    render();
+  });
+
+  document.getElementById('cotiz-fecha-desde').addEventListener('change', e => {
+    fechaDesde = e.target.value;
+    render();
+  });
+
+  document.getElementById('cotiz-fecha-hasta').addEventListener('change', e => {
+    fechaHasta = e.target.value;
+    render();
+  });
+
+  document.getElementById('cotiz-fecha-clear').addEventListener('click', () => {
+    fechaDesde = '';
+    fechaHasta = '';
+    document.getElementById('cotiz-fecha-desde').value = '';
+    document.getElementById('cotiz-fecha-hasta').value = '';
     render();
   });
 
@@ -126,6 +154,10 @@ Router.register('nueva-cotizacion', async (view, params) => {
 
   let tipoCotizacion = editando?.tipoCotizacion || 'Estandar';
   let configCols = editando?.configCols || { foto: true, ancho: true, alto: true, unidad: true, m2: true, cantidad: true };
+
+  // Estado/abono actuales disponibles para generarPDFCotizacion() al usar "Generar PDF" desde el formulario
+  window._estadoPDF     = editando?.estado || 'Pendiente';
+  window._montoAbonoPDF = editando?.montoAbono || 0;
 
   // linea: { tipo: 'producto'|'manual', producto, descripcion, ancho, alto, m2, precio, total, unidad, cantidad, foto }
   let lineas = editando?.lineas || [{ tipo:'producto', producto:'', descripcion:'', ancho:'', alto:'', m2:'', precio:'', total:'', cantidad:1, foto:'' }];
@@ -331,7 +363,7 @@ Router.register('nueva-cotizacion', async (view, params) => {
     refreshTotals();
   };
 
-  async function guardar(estado) {
+  async function guardar(estado, emitirPDF) {
     const totales = window._totalesActuales || { sub: totalSubtotal(), imp: 0, total: totalSubtotal(), abono60: 0, saldo40: 0 };
 
     const lineasFiltradas = lineas.filter(l =>
@@ -341,7 +373,10 @@ Router.register('nueva-cotizacion', async (view, params) => {
       producto: l.tipo === 'manual' ? (l.descripcion || '—') : l.producto,
     }));
 
+    // Al editar, parte del registro existente para no perder campos que no vienen del
+    // formulario (montoAbono, fechaAbono, metodoAbono, fechaEnvio, numeroFactura…).
     const data = {
+      ...(editando || {}),
       id:            editando?.id || undefined,
       numero,
       fecha:         document.getElementById('fecha').value,
@@ -350,7 +385,6 @@ Router.register('nueva-cotizacion', async (view, params) => {
       clienteEmail:  document.getElementById('clienteEmail').value,
       clienteDir:    document.getElementById('clienteDir').value,
       tipoCliente:   document.getElementById('tipoCliente').value,
-      vendedor:      document.getElementById('vendedor').value,
       notas:         document.getElementById('notas').value,
       lineas:        lineasFiltradas,
       subtotal:      totales.sub,
@@ -360,11 +394,18 @@ Router.register('nueva-cotizacion', async (view, params) => {
       aplicaITBMS:   totales.aplicaITBMS,
       tipoCotizacion,
       configCols,
-      estado,
+      // No degradar un estado más avanzado (Abonado/Pagado/Completado/Factura) solo por
+      // editar el contenido de la cotización; el cambio de estado se hace desde "Ver cotización".
+      estado: (editando && ['Abonado','Pagado','Completado','Factura'].includes(editando.estado))
+        ? editando.estado
+        : estado,
     };
     if (!data.clienteNombre) { UI.toast('El nombre del cliente es requerido', 'error'); return; }
-    await DB.saveCotizacion(data);
+    const saved = await DB.saveCotizacion(data);
     UI.toast(estado === 'Borrador' ? 'Borrador guardado' : 'Cotización #' + numero + ' guardada', 'success');
+    if (emitirPDF) {
+      await generarPDFCotizacion(saved.id);
+    }
     Router.go('cotizaciones');
   }
 
@@ -379,7 +420,7 @@ Router.register('nueva-cotizacion', async (view, params) => {
       <div class="page-actions">
         <button class="btn btn-outline" onclick="window.guardar('Borrador')">Guardar borrador</button>
         <button class="btn btn-secondary" onclick="generarPDFCotizacion(null, true)" id="btn-pdf">${UI.icons.pdf} Generar PDF</button>
-        <button class="btn btn-primary" onclick="window.guardar('Pendiente')">${UI.icons.check} Guardar y emitir</button>
+        <button class="btn btn-primary" onclick="window.guardar('Pendiente', true)">${UI.icons.check} Guardar y emitir</button>
         ${editando ? `<button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="window._deleteCotizacion(${editando.id})">${UI.icons.trash} Eliminar</button>` : ''}
       </div>
     </div>
@@ -443,10 +484,6 @@ Router.register('nueva-cotizacion', async (view, params) => {
             <option ${editando?.tipoCliente==='Comercial'?'selected':''}>Comercial</option>
             <option ${editando?.tipoCliente==='Corporativo'?'selected':''}>Corporativo</option>
           </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Vendedor asignado</label>
-          <input id="vendedor" class="form-input" placeholder="Nombre del vendedor" value="${editando?.vendedor||Auth.current()?.nombre||''}">
         </div>
         <div class="form-group">
           <label class="form-label">Fecha</label>
@@ -694,8 +731,14 @@ Router.register('ver-cotizacion', async (view, params) => {
     <!-- Panel de pago si hay abono o pago total registrado -->
     ${abonoAcum > 0 ? `
     <div style="background:var(--green-light);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
-      <div style="font-size:13px;font-weight:700;color:${pagadoTotal ? 'var(--success)' : 'var(--amber)'};margin-bottom:12px;">
-        ${pagadoTotal ? 'Pagado en su totalidad' : 'Abono registrado'}
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:700;color:${pagadoTotal ? 'var(--success)' : 'var(--amber)'};">
+          ${pagadoTotal ? 'Pagado en su totalidad' : 'Abono registrado'}
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="window.abrirModalAbono()">${UI.icons.edit} Modificar abono</button>
+          <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="window.eliminarAbono()">${UI.icons.trash} Eliminar abono</button>
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;">
         <div><div style="font-size:12px;color:var(--text-gray);">Total cotización</div><div style="font-size:18px;font-weight:700;">${fmt(c.total||0)}</div></div>
@@ -713,7 +756,6 @@ Router.register('ver-cotizacion', async (view, params) => {
         <div class="info-item"><label>Correo</label><div class="info-value">${c.clienteEmail||'—'}</div></div>
         <div class="info-item"><label>Dirección</label><div class="info-value">${c.clienteDir||'—'}</div></div>
         <div class="info-item"><label>Tipo de cliente</label><div class="info-value">${c.tipoCliente||'—'}</div></div>
-        <div class="info-item"><label>Vendedor</label><div class="info-value">${c.vendedor||'—'}</div></div>
         <div class="info-item"><label>Estado</label><div class="info-value">${estadoBadge(c.estado)}</div></div>
         <div class="info-item"><label>Fecha</label><div class="info-value">${c.fecha||'—'}</div></div>
       </div>
@@ -791,7 +833,7 @@ Router.register('ver-cotizacion', async (view, params) => {
     <div class="modal-overlay" id="modal-abono" style="display:none;">
       <div class="modal" style="max-width:400px;">
         <div class="modal-header">
-          <div class="modal-title">Registrar Abono</div>
+          <div class="modal-title">${abonoAcum > 0 ? 'Modificar Abono' : 'Registrar Abono'}</div>
           <button class="modal-close" onclick="document.getElementById('modal-abono').style.display='none'">${UI.icons.x}</button>
         </div>
         <div class="modal-body">
@@ -813,7 +855,7 @@ Router.register('ver-cotizacion', async (view, params) => {
         </div>
         <div class="modal-footer">
           <button class="btn btn-outline" onclick="document.getElementById('modal-abono').style.display='none'">Cancelar</button>
-          <button class="btn btn-primary" onclick="window.confirmarAbono()">Registrar abono</button>
+          <button class="btn btn-primary" onclick="window.confirmarAbono()">${abonoAcum > 0 ? 'Guardar cambios' : 'Registrar abono'}</button>
         </div>
       </div>
     </div>
@@ -884,23 +926,47 @@ Router.register('ver-cotizacion', async (view, params) => {
     Router.go('ver-cotizacion', { id: c.id });
   };
 
+  window.abrirModalAbono = () => {
+    document.getElementById('monto-abono').value  = c.montoAbono || '';
+    document.getElementById('fecha-abono').value  = c.fechaAbono || new Date().toISOString().slice(0,10);
+    document.getElementById('metodo-abono').value = c.metodoAbono || 'Efectivo';
+    document.getElementById('modal-abono').style.display = 'flex';
+  };
+
   window.confirmarAbono = async () => {
     const monto  = parseFloat(document.getElementById('monto-abono').value)||0;
     const fecha  = document.getElementById('fecha-abono').value;
     const metodo = document.getElementById('metodo-abono').value;
     if (monto <= 0) { UI.toast('Monto inválido', 'error'); return; }
 
+    const montoAnterior = c.montoAbono || 0;
     c.montoAbono  = monto;
     c.estado      = monto >= (c.total||0) - 0.01 ? 'Pagado' : 'Abonado';
     c.fechaAbono  = fecha;
     c.metodoAbono = metodo;
     await DB.saveCotizacion(c);
 
-    // Auto-actualizar cobros / estado de cuenta
-    await _syncCobro(c, monto, fecha, metodo);
+    // Auto-actualizar cobros / estado de cuenta (solo sincroniza la diferencia contra el abono anterior)
+    await _syncCobro(c, monto, fecha, metodo, montoAnterior);
 
     document.getElementById('modal-abono').style.display = 'none';
-    UI.toast(c.estado === 'Pagado' ? `Cotización #${c.numero} cancelada en su totalidad` : `Abono de ${fmt(monto)} registrado`, 'success');
+    UI.toast(c.estado === 'Pagado' ? `Cotización #${c.numero} cancelada en su totalidad` : `Abono actualizado a ${fmt(monto)}`, 'success');
+    Router.go('ver-cotizacion', { id: c.id });
+  };
+
+  window.eliminarAbono = async () => {
+    if (!confirm('¿Eliminar el abono registrado de esta cotización? El estado volverá a "Aprobada" y se actualizará Cuentas por cobrar.')) return;
+
+    const montoAnterior = c.montoAbono || 0;
+    c.montoAbono  = 0;
+    c.fechaAbono  = '';
+    c.metodoAbono = '';
+    c.estado      = 'Aprobada';
+    await DB.saveCotizacion(c);
+
+    await _syncCobro(c, 0, new Date().toISOString().slice(0,10), '', montoAnterior);
+
+    UI.toast('Abono eliminado', 'success');
     Router.go('ver-cotizacion', { id: c.id });
   };
 
@@ -948,7 +1014,7 @@ Router.register('ver-cotizacion', async (view, params) => {
     }
   }
 
-  async function _syncCobro(cot, monto, fecha, metodo) {
+  async function _syncCobro(cot, monto, fecha, metodo, montoAnterior = 0) {
     const cobros = await DB.getCobros();
     let cobro = cobros.find(cb => cb.cotizacionId === cot.id);
     if (!cobro) {
@@ -965,8 +1031,13 @@ Router.register('ver-cotizacion', async (view, params) => {
         vencimiento:  '',
       });
     }
-    // registrarPago maneja internamente la suma de pagado y actualiza el cobro
-    await DB.registrarPago(cobro.id, monto, fecha, metodo, `Abono cotización #${cot.numero}`);
+    // Solo se sincroniza la diferencia contra el abono anterior, para no duplicar
+    // el pago al modificar o eliminar un abono ya registrado.
+    const delta = monto - montoAnterior;
+    if (Math.abs(delta) > 0.005) {
+      const notas = delta > 0 ? `Abono cotización #${cot.numero}` : `Ajuste/eliminación de abono, cotización #${cot.numero}`;
+      await DB.registrarPago(cobro.id, delta, fecha, metodo || 'Ajuste', notas);
+    }
   }
 
   window._eliminarVista = async (id) => {
@@ -1027,6 +1098,8 @@ async function generarPDFCotizacion(id, fromForm = false) {
       tipoCotizacion: window._tipoCotizPDF || 'Estandar',
       configCols: window._configColsPDF || {foto:true, ancho:true, alto:true, unidad:true, m2:true, cantidad:true},
       lineas: window._lineasPDF || [],
+      estado: window._estadoPDF || 'Pendiente',
+      montoAbono: window._montoAbonoPDF || 0,
     };
   } else {
     c = await DB.getCotizacion(id);
@@ -1042,11 +1115,24 @@ async function generarPDFCotizacion(id, fromForm = false) {
   const W    = 215.9;   // ancho letter
   const H    = 279.4;   // alto letter
   const ML   = 15;      // margen izquierdo
-  const MR   = W - 15;  // margen derecho
+  const MR   = W - 20;  // margen derecho incrementado para evitar cortes
 
   /* ── PRECARGA DE IMÁGENES Y LOGO ── */
   const logoBase64 = await _loadLogoBase64();
-  
+
+  // Proporción real del logo (evita deformarlo al dibujarlo en el header y la marca de agua)
+  let logoRatio = 2; // fallback ancho:alto
+  if (logoBase64) {
+    try {
+      const props = doc.getImageProperties(logoBase64);
+      if (props?.width && props?.height) logoRatio = props.width / props.height;
+    } catch (e) {}
+  }
+
+  const estadoPDF = c.estado || 'Pendiente';
+  const montoAbonoPDF = c.montoAbono || 0;
+  const saldoPendientePDF = Math.max((c.total || 0) - montoAbonoPDF, 0);
+
   let pagosBase64 = null;
   try {
     const resp = await fetch('assets/metodos_pago.png'); // Si existe
@@ -1091,11 +1177,13 @@ async function generarPDFCotizacion(id, fromForm = false) {
   doc.setFillColor(...greenHeader);
   doc.rect(0, 0, W, 4, 'F');
   
-  // Logo superior derecha
+  // Logo superior derecha (proporción real, sin deformar)
   if (logoBase64) {
-    doc.addImage(logoBase64, 'PNG', MR - 30, 8, 30, 25);
+    const logoH = 15;
+    const logoW = logoH * logoRatio;
+    doc.addImage(logoBase64, 'PNG', MR - logoW, 10, logoW, logoH);
   }
-  
+
   // Tabla de número/fecha superior derecha (caja completa, igual a las cotizaciones históricas)
   const fechaY = 36;
   const fParsed = c.fecha ? new Date(c.fecha+'T12:00:00') : new Date();
@@ -1117,12 +1205,14 @@ async function generarPDFCotizacion(id, fromForm = false) {
     }
   });
 
-  // Título Izquierda
+  // Título Izquierda — refleja el estado real de la cotización
+  const tituloPDF = estadoPDF === 'Pagado' ? 'CANCELADO' : (estadoPDF === 'Abonado' ? 'ABONADO' : 'COTIZACION');
+  const colorTitulo = estadoPDF === 'Pagado' ? [34, 197, 94] : (estadoPDF === 'Abonado' ? [245, 158, 11] : tealTitle);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
-  doc.setTextColor(...tealTitle);
-  doc.text('COTIZACION', ML, 20);
-  
+  doc.setTextColor(...colorTitulo);
+  doc.text(tituloPDF, ML, 20);
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(0, 0, 0);
@@ -1173,7 +1263,7 @@ async function generarPDFCotizacion(id, fromForm = false) {
   if (config.ancho) colNames.push('ANCHO');
   if (config.alto) colNames.push('ALTO');
   if (config.unidad) colNames.push('UNIDAD');
-  if (config.m2) colNames.push('m²');
+  // Se omite intencionalmente m2 en el PDF para ocultar el cálculo interno al cliente final
   if (config.cantidad) colNames.push('CANT.');
   colNames.push('PRECIO UNIT.', 'TOTAL');
 
@@ -1185,7 +1275,7 @@ async function generarPDFCotizacion(id, fromForm = false) {
     if (config.ancho) row.push(l.ancho ? l.ancho + ' m' : '—');
     if (config.alto) row.push(l.alto ? l.alto + ' m' : '—');
     if (config.unidad) row.push(l.unidad || '—');
-    if (config.m2) row.push(l.m2 && l.m2 !== '—' ? `${l.m2}` : '—');
+    // No incluir la celda de m2 en las filas
     if (config.cantidad) row.push(l.cantidad || 1);
     row.push(fmtPDF(l.precio || 0));
     row.push(fmtPDF(l.total  || 0));
@@ -1214,10 +1304,10 @@ async function generarPDFCotizacion(id, fromForm = false) {
         halign: 'center'
       },
       columnStyles: {
-        0: { cellWidth: 12 }, // ITEM
+        0: { cellWidth: 12, fontSize: 7 }, // ITEM
         [config.foto ? 2 : 1]: { halign: 'left' }, // DESCRIPCION izq
       },
-      margin: { left: ML, right: 15 },
+      margin: { left: ML, right: 20 },
       styles: {
         lineColor: [0, 0, 0],
         lineWidth: 0.2,
@@ -1246,7 +1336,16 @@ async function generarPDFCotizacion(id, fromForm = false) {
   }
   totalRows.push(['TRANSPORTE', '—']);
   totalRows.push(['TOTAL', fmtPDF(c.total||0)]);
-  if (c.abono60 > 0 || c.saldo40 > 0) {
+
+  if (estadoPDF === 'Pagado') {
+    // Trabajo cancelado (pagado en su totalidad) — no queda saldo
+    totalRows.push(['ABONADO', fmtPDF(montoAbonoPDF || c.total || 0)]);
+    totalRows.push(['SALDO PENDIENTE', fmtPDF(0)]);
+  } else if (estadoPDF === 'Abonado' && montoAbonoPDF > 0) {
+    // Muestra el abono real registrado y lo que falta por cobrar
+    totalRows.push(['ABONADO', fmtPDF(montoAbonoPDF)]);
+    totalRows.push(['SALDO PENDIENTE', fmtPDF(saldoPendientePDF)]);
+  } else if (c.abono60 > 0 || c.saldo40 > 0) {
     totalRows.push([`ABONO (${abonoPct}%)`, fmtPDF(c.abono60||0)]);
     totalRows.push([`RESTANTE (${saldoPct}%)`, fmtPDF(c.saldo40||0)]);
   }
@@ -1255,8 +1354,8 @@ async function generarPDFCotizacion(id, fromForm = false) {
     startY: finalY + 4,
     body: totalRows,
     theme: 'grid',
-    tableWidth: 75,
-    margin: { left: MR - 75 },
+    tableWidth: 80,
+    margin: { left: MR - 80, right: 20 },
     styles: { fontSize: 9, cellPadding: 2.2, lineColor: [0,0,0], lineWidth: 0.2, textColor: 0 },
     columnStyles: {
       0: { fontStyle: 'bold', halign: 'right', cellWidth: 40 },
@@ -1268,8 +1367,17 @@ async function generarPDFCotizacion(id, fromForm = false) {
         data.cell.styles.fillColor = greenHeader;
         data.cell.styles.textColor = [255,255,255];
         data.cell.styles.fontStyle = 'bold';
-      } else if (typeof label === 'string' && label.startsWith('ABONO')) {
+      } else if (label === 'ABONADO' || (typeof label === 'string' && label.startsWith('ABONO'))) {
         data.cell.styles.textColor = greenHeader;
+        data.cell.styles.fontStyle = 'bold';
+      } else if (label === 'SALDO PENDIENTE') {
+        // Resalta la casilla: ámbar si aún debe, verde si ya quedó en $0.00
+        const pendiente = saldoPendientePDF > 0.01 && estadoPDF !== 'Pagado';
+        data.cell.styles.fillColor = pendiente ? [245, 158, 11] : [34, 197, 94];
+        data.cell.styles.textColor = [255, 255, 255];
+        data.cell.styles.fontStyle = 'bold';
+      } else if (typeof label === 'string' && label.startsWith('RESTANTE')) {
+        data.cell.styles.textColor = [245, 158, 11];
         data.cell.styles.fontStyle = 'bold';
       }
     }
@@ -1278,31 +1386,37 @@ async function generarPDFCotizacion(id, fromForm = false) {
   let ty = doc.lastAutoTable.finalY;
 
   // Caja de Condiciones (Bottom Left)
+  // Ancho de envoltura de texto: deja espacio a la derecha para la sección de métodos de pago
+  const condWrapWidth = 108;
+  const defaultCond = [
+    '* Realizar abono del 60% para iniciar y el restante 40% al finalizar.',
+    '* Una vez se apruebe la cotización se fija fecha de entrega en días hábiles (lunes a viernes).',
+    '* Somos mano de obra garantizada.',
+    '* No nos hacemos responsables por algún daño de tuberías no reportadas o permisos que se necesiten para llevar a cabo dicho proyecto.'
+  ];
+
+  const lineasCondiciones = c.notas
+    ? doc.splitTextToSize(c.notas, condWrapWidth)
+    : defaultCond.flatMap(l => doc.splitTextToSize(l, condWrapWidth));
+
+  // Alto de la caja calculado según el contenido real, para que nada quede cortado
+  const contactLineas = 4; // Crystal Service / teléfono / email / sitio web
+  const boxHeight = Math.max(40, 9 + (lineasCondiciones.length * 3.5) + 4 + (contactLineas * 4) + 4);
   const by = Math.max(ty + 10, 210);
-  
+
   // Dibuja el marco general de info inferior
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
-  doc.rect(ML, by, W - ML - 15, 40);
-  
+  doc.rect(ML, by, W - ML - 15, boxHeight);
+
   doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.text('Condiciones:', ML + 2, by + 5);
-  
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   let cy_cond = by + 9;
-  const defaultCond = [
-    '* Realizar abono del 60% para iniciar y el restante 40% al finalizar.',
-    '* Una vez se apruebe la cotización se fija fecha de entrega en días hábiles.',
-    '* Somos mano de obra garantizada.',
-    '* No nos hacemos responsables por algún daño de tuberías no reportadas a perforar necesarias.',
-    '* Cotización válida 30 días hábiles desde la fecha.',
-    '* Valor de visita $30 Balboas los cuales son deducibles de la cotización final.'
-  ];
-  
-  const lineasCondiciones = c.notas ? doc.splitTextToSize(c.notas, W/2) : defaultCond;
   for (const l of lineasCondiciones) {
     doc.text(l, ML + 2, cy_cond);
     cy_cond += 3.5;
@@ -1343,22 +1457,33 @@ async function generarPDFCotizacion(id, fromForm = false) {
     doc.text('GRACIAS POR SU CONFIANZA', W - 60, by + 35);
   }
 
-  // Banner inferior
+  // Banner inferior — solo teléfonos de la empresa
   doc.setFillColor(...greenHeader);
   doc.rect(0, H - 10, W, 10, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
+  doc.setFontSize(10);
   doc.setTextColor(255, 255, 255);
-  doc.text('Crystal Service Panamá', ML, H - 4);
-  doc.text('Ciudad de Panamá', W/2, H - 4, { align: 'center' });
-  doc.text('Vidrio · Aluminio · Mantenimiento', MR, H - 4, { align: 'right' });
+  doc.text('6362-1210   /   6456-2658', W/2, H - 4, { align: 'center' });
 
   /* ── MARCA DE AGUA ── */
-  if (logoBase64 && typeof doc.GState === 'function') {
-    doc.saveGraphicsState();
-    doc.setGState(new doc.GState({ opacity: 0.05 }));
-    doc.addImage(logoBase64, 'PNG', W/2 - 60, H/2 - 60, 120, 120);
-    doc.restoreGraphicsState();
+  if (typeof doc.GState === 'function') {
+    if (estadoPDF === 'Pagado') {
+      // Trabajo cancelado: se quita el logo y queda el texto "CANCELADO" transparente
+      doc.saveGraphicsState();
+      doc.setGState(new doc.GState({ opacity: 0.12 }));
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(64);
+      doc.setTextColor(34, 197, 94);
+      doc.text('CANCELADO', W/2, H/2, { align: 'center', angle: 35 });
+      doc.restoreGraphicsState();
+    } else if (logoBase64) {
+      doc.saveGraphicsState();
+      doc.setGState(new doc.GState({ opacity: 0.05 }));
+      const wmW = 150;
+      const wmH = wmW / logoRatio;
+      doc.addImage(logoBase64, 'PNG', W/2 - wmW/2, H/2 - wmH/2, wmW, wmH);
+      doc.restoreGraphicsState();
+    }
   }
 
   doc.save(`Cotizacion_${c.numero}_${(c.clienteNombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}.pdf`);

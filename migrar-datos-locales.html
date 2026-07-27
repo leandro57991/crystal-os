@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crystal OS — Migración de datos locales a Supabase</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; background: #f4f9f6; color: #1a1a1a; }
+    h1 { color: #1F7A3C; font-size: 22px; }
+    .card { background: white; border-radius: 10px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(31,122,60,0.10); }
+    .btn { padding: 12px 24px; background: #1F7A3C; color: white; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; font-family: inherit; }
+    .btn:hover { background: #27AE60; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .log { background: #1a1a1a; color: #22C55E; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 13px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; margin: 2px; }
+    .badge-green { background: #dcfce7; color: #16a34a; }
+    .badge-gray  { background: #f3f4f6; color: #6b7280; }
+    .badge-blue  { background: #dbeafe; color: #2563eb; }
+    .warn { color: #f59e0b; background: #fef3c7; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+    .ok   { color: #16a34a; background: #dcfce7; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<h1>🔄 Migración de datos locales → Supabase</h1>
+<p style="color:#6b7280;margin-bottom:24px;">Esta herramienta lee los datos guardados en tu navegador (IndexedDB) y los sube a Supabase para que estén disponibles en todos tus dispositivos.</p>
+
+<div class="card" id="paso-escanear">
+  <h2 style="font-size:16px;margin-bottom:12px;color:#1F7A3C;">Paso 1 — Escanear datos locales</h2>
+  <p style="font-size:14px;color:#6b7280;margin-bottom:16px;">Haz clic para ver qué datos tienes guardados localmente en este navegador.</p>
+  <button class="btn" onclick="escanear()">Escanear datos locales</button>
+  <div id="resultado-scan" style="margin-top:16px;"><p style="color:#6b7280;">Iniciando escaneo automático…</p></div>
+</div>
+
+<div class="card" id="paso-migrar" style="display:none;">
+  <h2 style="font-size:16px;margin-bottom:12px;color:#1F7A3C;">Paso 2 — Migrar a Supabase</h2>
+  <p style="font-size:14px;color:#6b7280;margin-bottom:16px;">Subiendo todos los datos a la nube…</p>
+  <button class="btn" id="btn-migrar" onclick="migrar()">Subir todo a Supabase</button>
+</div>
+
+<div class="card" id="paso-log" style="display:none;">
+  <h2 style="font-size:16px;margin-bottom:12px;">Registro de migración</h2>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const SUPABASE_URL      = 'https://avxogfmnjtpwanrmxplg.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_W2R__mHcc-g2NB0ugVdelg_ubO7M_Cs';
+const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const STORES = [
+  'visitas', 'cotizaciones', 'clientes', 'proyectos', 'reportes',
+  'trabajadores', 'asistencia', 'cobros', 'pagos', 'inventario',
+  'movimientos_inv', 'notificaciones', 'recordatorios', 'biblioteca'
+];
+
+let datosLocales = {};
+
+function log(msg) {
+  const el = document.getElementById('log');
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+  document.getElementById('paso-log').style.display = '';
+}
+
+function leerStore(storeName) {
+  return new Promise((resolve) => {
+    const req = indexedDB.open('CrystalOS');
+    req.onsuccess = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(storeName)) { db.close(); resolve([]); return; }
+      const tx = db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      const all = store.getAll();
+      all.onsuccess = () => { db.close(); resolve(all.result || []); };
+      all.onerror   = () => { db.close(); resolve([]); };
+    };
+    req.onerror = () => resolve([]);
+  });
+}
+
+async function escanear() {
+  document.getElementById('resultado-scan').innerHTML = '<p style="color:#6b7280;">Escaneando…</p>';
+  datosLocales = {};
+  let totalItems = 0;
+
+  for (const s of STORES) {
+    const items = await leerStore(s);
+    if (items.length > 0) {
+      datosLocales[s] = items;
+      totalItems += items.length;
+    }
+  }
+
+  if (totalItems === 0) {
+    document.getElementById('resultado-scan').innerHTML = `
+      <div class="warn">
+        ⚠️ No se encontraron datos locales en este navegador.<br><br>
+        <strong>Posibles causas:</strong><br>
+        • Los datos están en otro navegador (Chrome, Edge, Firefox)<br>
+        • Los datos están en otra computadora<br>
+        • La base de datos local nunca fue creada en este equipo
+      </div>`;
+    return;
+  }
+
+  let html = `<div class="ok">✓ Se encontraron <strong>${totalItems} registros</strong> en ${Object.keys(datosLocales).length} tablas:</div>`;
+  html += '<div style="margin-top:10px;">';
+  for (const [store, items] of Object.entries(datosLocales)) {
+    html += `<span class="badge badge-green">${store}: ${items.length}</span>`;
+  }
+  html += '</div>';
+  document.getElementById('resultado-scan').innerHTML = html;
+  document.getElementById('paso-migrar').style.display = '';
+}
+
+// Auto-ejecutar al cargar la página
+window.addEventListener('load', async () => {
+  await escanear();
+  // Si encontró datos, migrar automáticamente después de 2 segundos
+  if (Object.keys(datosLocales).length > 0) {
+    document.getElementById('paso-migrar').style.display = '';
+    log('Iniciando migración automática en 2 segundos…');
+    setTimeout(migrar, 2000);
+  }
+});
+
+async function migrar() {
+  document.getElementById('btn-migrar').disabled = true;
+  log('=== INICIO MIGRACIÓN ' + new Date().toLocaleString() + ' ===\n');
+
+  let totalOk = 0, totalErr = 0;
+
+  for (const [store, items] of Object.entries(datosLocales)) {
+    log(`[${store}] Migrando ${items.length} registros…`);
+    let ok = 0, err = 0;
+
+    // Procesar en lotes de 50
+    for (let i = 0; i < items.length; i += 50) {
+      const lote = items.slice(i, i + 50);
+      const rows = lote.map(item => ({
+        id:   String(item.id || item.key || (Date.now() + Math.random()).toString(36)),
+        data: item
+      }));
+
+      const { error } = await supa
+        .from(store)
+        .upsert(rows, { onConflict: 'id' });
+
+      if (error) {
+        log(`  ✗ Error lote ${i}–${i+lote.length}: ${error.message}`);
+        err += lote.length;
+      } else {
+        ok += lote.length;
+      }
+    }
+
+    log(`  ✓ ${ok} subidos${err > 0 ? `, ${err} errores` : ''}`);
+    totalOk += ok;
+    totalErr += err;
+  }
+
+  log(`\n=== FIN ===`);
+  log(`Total subidos: ${totalOk}`);
+  if (totalErr > 0) log(`Total errores: ${totalErr}`);
+  log(`\n✓ Migración completa. Ahora abre crystalservice.netlify.app y verifica tus datos.`);
+
+  document.getElementById('btn-migrar').textContent = '✓ Migración completada';
+}
+</script>
+</body>
+</html>
