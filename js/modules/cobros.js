@@ -125,7 +125,7 @@ Router.register('cobros', async (view) => {
           const badge = c.estado==='Pagado'?'badge-success':c.diasVence<0?'badge-danger':c.diasVence<=7?'badge-amber':'badge-blue';
           const label = c.estado==='Pagado'?'Pagado':c.diasVence<0?`${Math.abs(c.diasVence)}d vencido`:c.diasVence<=7?`${c.diasVence}d restantes`:'Al día';
           return `<tr>
-            <td><strong>${c.clienteNombre||'—'}</strong></td>
+            <td><strong>${c.clienteNombre||'—'}</strong>${c.telefono ? `<div style="font-size:11px;color:var(--text-gray);">${c.telefono}</div>` : ''}</td>
             <td>${c.factura||'—'}</td>
             <td>${fmt(c.total||0)}</td>
             <td style="color:var(--success);">${fmt(c.pagado||0)}</td>
@@ -178,6 +178,7 @@ Router.register('cobros', async (view) => {
   window.guardarNuevoCobro = async () => {
     const data = {
       clienteNombre: document.getElementById('nc-cliente').value,
+      telefono:      document.getElementById('nc-telefono').value,
       factura:       document.getElementById('nc-factura').value,
       total:         parseFloat(document.getElementById('nc-total').value)||0,
       pagado:        parseFloat(document.getElementById('nc-pagado').value)||0,
@@ -269,9 +270,15 @@ Router.register('cobros', async (view) => {
           <button class="modal-close" onclick="UI.closeModal('modal-nuevo-cobro')">${UI.icons.x}</button>
         </div>
         <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">Cliente <span class="required">*</span></label>
-            <input id="nc-cliente" class="form-input" placeholder="Nombre del cliente">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Cliente <span class="required">*</span></label>
+              <input id="nc-cliente" class="form-input" placeholder="Nombre del cliente">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Teléfono</label>
+              <input id="nc-telefono" class="form-input" placeholder="Ej: 6456-2658">
+            </div>
           </div>
           <div class="form-row">
             <div class="form-group">

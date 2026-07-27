@@ -293,6 +293,76 @@
   background: #fff;
 }
 
+/* ── COTIZACIONES — TARJETAS MÓVILES ─────────────────────
+   Oculto en escritorio (css/mobile.css lo activa en <=640px
+   y oculta la tabla, para no comprimir la información). */
+
+.cotiz-mobile-cards { display: none; }
+
+.cotiz-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+.cotiz-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cotiz-card-num {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+.cotiz-card-cliente {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin-bottom: 2px;
+}
+.cotiz-card-tel {
+  font-size: 12.5px;
+  color: var(--text-gray);
+}
+.cotiz-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 10px;
+}
+.cotiz-card-total {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--green-main);
+}
+.cotiz-card-fecha {
+  font-size: 12.5px;
+  color: var(--text-gray);
+}
+.cotiz-card-abono {
+  font-size: 11.5px;
+  color: var(--text-gray);
+  margin-top: 4px;
+}
+.cotiz-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+.cotiz-card-actions .btn {
+  justify-content: center;
+  font-size: 13px;
+  padding: 11px 8px;
+  gap: 6px;
+}
+.cotiz-card-btn-full { grid-column: 1 / -1; }
+
 /* ── MODALS ─────────────────────────────────────────── */
 
 .modal-overlay {

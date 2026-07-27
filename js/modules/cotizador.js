@@ -33,35 +33,74 @@ Router.register('cotizaciones', async (view) => {
       UI.paginacionHTML(pag, 'window._cotizPagina', 'window._cotizPorPagina');
 
     const table = document.getElementById('cotiz-table-body');
+    const cards = document.getElementById('cotiz-mobile-cards');
     if (!table) return;
-    table.innerHTML = pag.items.length === 0
-      ? `<tr><td colspan="6" class="table-empty">No hay cotizaciones${busqueda ? ` con "${busqueda}"` : ''}</td></tr>`
-      : pag.items.map(c => {
-          const abonoInfo = (c.estado === 'Abonado' && c.montoAbono)
-            ? `<div style="font-size:11px;color:var(--text-gray);">Abono: ${fmt(c.montoAbono)}</div>`
-            : (c.estado === 'Pagado' && c.montoAbono)
-            ? `<div style="font-size:11px;color:var(--text-gray);">Cancelado: ${fmt(c.montoAbono)}</div>` : '';
-          return `
-          <tr onclick="Router.go('ver-cotizacion',{id:'${c.id}'})" style="cursor:pointer;">
-            <td><strong>#${c.numero}</strong></td>
-            <td>${c.clienteNombre||'—'}<br><span style="color:var(--text-gray);font-size:11px;">${c.clienteTel||''}</span></td>
-            <td>
-              <strong>${fmt(c.total||0)}</strong>
-              ${c.abono60 > 0 ? `<div style="font-size:11px;color:var(--green-mid);">60%: ${fmt(c.abono60)}</div>` : ''}
-            </td>
-            <td>${estadoBadge(c.estado)}${abonoInfo}</td>
-            <td style="color:var(--text-gray);">${c.fecha||'—'}</td>
-            <td onclick="event.stopPropagation()">
-              <div style="display:flex;gap:4px;">
-                <button class="btn btn-sm btn-outline" onclick="Router.go('ver-cotizacion',{id:'${c.id}'})" title="Ver">${UI.icons.eye}</button>
-                <button class="btn btn-sm btn-outline" onclick="Router.go('nueva-cotizacion',{id:'${c.id}'})" title="Editar">${UI.icons.edit}</button>
-                <button class="btn btn-sm btn-secondary" onclick="generarPDFCotizacion('${c.id}')" title="PDF">${UI.icons.pdf}</button>
-                <button class="btn btn-sm btn-whatsapp" onclick="enviarWhatsApp('${c.id}')" title="WhatsApp">${UI.icons.whatsapp}</button>
-                <button class="btn btn-sm btn-outline" style="color:var(--danger);" onclick="window._eliminarLista('${c.id}','${c.numero}')" title="Eliminar">${UI.icons.trash}</button>
-              </div>
-            </td>
-          </tr>`;
-        }).join('');
+
+    if (pag.items.length === 0) {
+      const vacio = `No hay cotizaciones${busqueda ? ` con "${busqueda}"` : ''}`;
+      table.innerHTML = `<tr><td colspan="6" class="table-empty">${vacio}</td></tr>`;
+      if (cards) cards.innerHTML = `<div class="empty-state">${vacio}</div>`;
+      return;
+    }
+
+    table.innerHTML = pag.items.map(c => {
+      const abonoInfo = abonoInfoLinea(c);
+      return `
+      <tr onclick="Router.go('ver-cotizacion',{id:'${c.id}'})" style="cursor:pointer;">
+        <td><strong>#${c.numero}</strong></td>
+        <td>${c.clienteNombre||'—'}<br><span style="color:var(--text-gray);font-size:11px;">${c.clienteTel||''}</span></td>
+        <td>
+          <strong>${fmt(c.total||0)}</strong>
+          ${c.abono60 > 0 ? `<div style="font-size:11px;color:var(--green-mid);">60%: ${fmt(c.abono60)}</div>` : ''}
+        </td>
+        <td>${estadoBadge(c.estado)}${abonoInfo}</td>
+        <td style="color:var(--text-gray);">${c.fecha||'—'}</td>
+        <td onclick="event.stopPropagation()">
+          <div style="display:flex;gap:4px;">
+            <button class="btn btn-sm btn-outline" onclick="Router.go('ver-cotizacion',{id:'${c.id}'})" title="Ver">${UI.icons.eye}</button>
+            <button class="btn btn-sm btn-outline" onclick="Router.go('nueva-cotizacion',{id:'${c.id}'})" title="Editar">${UI.icons.edit}</button>
+            <button class="btn btn-sm btn-secondary" onclick="generarPDFCotizacion('${c.id}')" title="PDF">${UI.icons.pdf}</button>
+            <button class="btn btn-sm btn-whatsapp" onclick="enviarWhatsApp('${c.id}')" title="WhatsApp">${UI.icons.whatsapp}</button>
+            <button class="btn btn-sm btn-outline" style="color:var(--danger);" onclick="window._eliminarLista('${c.id}','${c.numero}')" title="Eliminar">${UI.icons.trash}</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    if (cards) {
+      cards.innerHTML = pag.items.map(c => {
+        const abonoInfo = abonoInfoLinea(c);
+        return `
+        <div class="cotiz-card" onclick="Router.go('ver-cotizacion',{id:'${c.id}'})">
+          <div class="cotiz-card-top">
+            <div class="cotiz-card-num">#${c.numero}</div>
+            ${estadoBadge(c.estado)}
+          </div>
+          <div class="cotiz-card-cliente">${c.clienteNombre||'—'}</div>
+          ${c.clienteTel ? `<div class="cotiz-card-tel">${c.clienteTel}</div>` : ''}
+          <div class="cotiz-card-row">
+            <div class="cotiz-card-total">${fmt(c.total||0)}</div>
+            <div class="cotiz-card-fecha">${c.fecha||'—'}</div>
+          </div>
+          ${c.abono60 > 0 ? `<div class="cotiz-card-abono">60%: ${fmt(c.abono60)}</div>` : ''}
+          ${abonoInfo}
+          <div class="cotiz-card-actions" onclick="event.stopPropagation()">
+            <button class="btn btn-sm btn-outline" onclick="Router.go('ver-cotizacion',{id:'${c.id}'})">${UI.icons.eye} Ver</button>
+            <button class="btn btn-sm btn-outline" onclick="Router.go('nueva-cotizacion',{id:'${c.id}'})">${UI.icons.edit} Editar</button>
+            <button class="btn btn-sm btn-secondary" onclick="generarPDFCotizacion('${c.id}')">${UI.icons.pdf} PDF</button>
+            <button class="btn btn-sm btn-whatsapp" onclick="enviarWhatsApp('${c.id}')">${UI.icons.whatsapp} WhatsApp</button>
+            <button class="btn btn-sm btn-outline cotiz-card-btn-full" style="color:var(--danger);" onclick="window._eliminarLista('${c.id}','${c.numero}')">${UI.icons.trash} Eliminar</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  function abonoInfoLinea(c) {
+    return (c.estado === 'Abonado' && c.montoAbono)
+      ? `<div class="cotiz-card-abono">Abono: ${fmt(c.montoAbono)}</div>`
+      : (c.estado === 'Pagado' && c.montoAbono)
+      ? `<div class="cotiz-card-abono">Cancelado: ${fmt(c.montoAbono)}</div>` : '';
   }
 
   const estados = ['Todos','Borrador','Pendiente','En negociación','Aprobada','Abonado','Pagado','Completado','Factura','Cancelado','Perdida'];
@@ -96,7 +135,7 @@ Router.register('cotizaciones', async (view) => {
           <button class="btn btn-ghost btn-sm" id="cotiz-fecha-clear" type="button">Limpiar fechas</button>
         </div>
       </div>
-      <div class="table-wrapper">
+      <div class="table-wrapper" id="cotiz-table-wrapper">
         <table class="table">
           <thead><tr>
             <th>#</th><th>Cliente</th><th>Total</th><th>Estado</th><th>Fecha</th><th>Acciones</th>
@@ -104,6 +143,7 @@ Router.register('cotizaciones', async (view) => {
           <tbody id="cotiz-table-body"></tbody>
         </table>
       </div>
+      <div class="cotiz-mobile-cards" id="cotiz-mobile-cards"></div>
       <div id="cotiz-pagination"></div>
     </div>
   `;
@@ -555,7 +595,7 @@ Router.register('nueva-cotizacion', async (view, params) => {
           <div class="total-row"><span>Subtotal</span><span id="sub-val">$0.00</span></div>
           <div class="total-row" style="align-items:center;">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
-              <input type="checkbox" id="chk-itbms" checked onchange="refreshTotals()"> ITBMS (7%)
+              <input type="checkbox" id="chk-itbms" ${editando?.aplicaITBMS === false ? '' : 'checked'} onchange="refreshTotals()"> ITBMS (7%)
             </label>
             <span id="itbms-val" style="color:var(--text-gray);">$0.00</span>
           </div>
@@ -1012,11 +1052,12 @@ Router.register('ver-cotizacion', async (view, params) => {
     const pagado = cot.montoAbono || 0;
     if (!cobro) {
       cobro = await DB.saveCobro({
-        cotizacionId: cot.id,
-        numero:       cot.numero,
-        factura:      numeroFactura,
-        cliente:      cot.clienteNombre,
-        descripcion:  `Cotización #${cot.numero}`,
+        cotizacionId:  cot.id,
+        numero:        cot.numero,
+        factura:       numeroFactura,
+        clienteNombre: cot.clienteNombre,
+        telefono:      cot.clienteTel || '',
+        notas:         `Cotización #${cot.numero}`,
         total:        cot.total || 0,
         pagado:       pagado,
         saldo:        (cot.total || 0) - pagado,
@@ -1035,10 +1076,11 @@ Router.register('ver-cotizacion', async (view, params) => {
     let cobro = cobros.find(cb => cb.cotizacionId === cot.id);
     if (!cobro) {
       cobro = await DB.saveCobro({
-        cotizacionId: cot.id,
-        numero:       cot.numero,
-        cliente:      cot.clienteNombre,
-        descripcion:  `Cotización #${cot.numero}`,
+        cotizacionId:  cot.id,
+        numero:        cot.numero,
+        clienteNombre: cot.clienteNombre,
+        telefono:      cot.clienteTel || '',
+        notas:         `Cotización #${cot.numero}`,
         total:        cot.total || 0,
         pagado:       0,
         saldo:        cot.total || 0,

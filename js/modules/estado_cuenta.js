@@ -19,7 +19,8 @@ Router.register('estado-cuenta', async (view) => {
     const porCliente = {};
     cobros.forEach(c => {
       const key = (c.clienteNombre || '—').trim();
-      if (!porCliente[key]) porCliente[key] = { nombre: key, cobros: [], totalFacturado: 0, totalAbonado: 0 };
+      if (!porCliente[key]) porCliente[key] = { nombre: key, telefono: '', cobros: [], totalFacturado: 0, totalAbonado: 0 };
+      if (!porCliente[key].telefono && c.telefono) porCliente[key].telefono = c.telefono;
       const pagosCobro = pagos.filter(p => p.cobroId === c.id);
       const abonado = pagosCobro.reduce((s, p) => s + (p.monto || 0), 0);
       porCliente[key].cobros.push({ ...c, pagosDetalle: pagosCobro.sort((a,b)=>a.fecha.localeCompare(b.fecha)), abonadoReal: abonado });
@@ -84,7 +85,7 @@ Router.register('estado-cuenta', async (view) => {
                     <div class="avatar" style="background:var(--green-soft);color:var(--green-main);">${cl.nombre[0].toUpperCase()}</div>
                     <div style="flex:1;">
                       <div style="font-size:15px;font-weight:700;">${cl.nombre}</div>
-                      <div style="font-size:12px;color:var(--text-gray);">${cl.cobros.length} proyecto(s) registrado(s)</div>
+                      <div style="font-size:12px;color:var(--text-gray);">${cl.cobros.length} proyecto(s) registrado(s)${cl.telefono ? ` · ${cl.telefono}` : ''}</div>
                     </div>
                     <div style="text-align:right;">
                       <div style="font-size:18px;font-weight:700;color:${saldoTotal>0?'var(--danger)':'var(--success)'};">${fmt(saldoTotal)}</div>
@@ -133,7 +134,7 @@ Router.register('estado-cuenta', async (view) => {
               const st    = saldo <= 0.01 ? 'badge-success' : 'badge-amber';
               return `<tr>
                 <td><strong>${c.factura||'—'}</strong></td>
-                <td>${c.notas||'—'}</td>
+                <td>${c.notas||'—'}${c.nota ? `<div style="font-size:11px;color:var(--amber);margin-top:2px;">${c.nota}</div>` : ''}</td>
                 <td>${fmt(c.total||0)}</td>
                 <td style="color:var(--success);">${fmt(c.abonadoReal||0)}</td>
                 <td style="font-weight:700;color:${saldo>0?'var(--danger)':'var(--success)'};">${fmt(saldo)}</td>
@@ -228,8 +229,10 @@ Router.register('estado-cuenta', async (view) => {
   window.guardarNuevoCobroEC = async () => {
     const data = {
       clienteNombre: document.getElementById('nc-cliente-ec').value,
+      telefono:      document.getElementById('nc-telefono-ec').value,
       factura:       document.getElementById('nc-factura-ec').value,
       notas:         document.getElementById('nc-desc-ec').value,
+      nota:          document.getElementById('nc-nota-ec').value,
       total:         parseFloat(document.getElementById('nc-total-ec').value)||0,
       pagado:        parseFloat(document.getElementById('nc-pagado-ec').value)||0,
       vencimiento:   document.getElementById('nc-vencimiento-ec').value,
@@ -297,7 +300,7 @@ Router.register('estado-cuenta', async (view) => {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
     doc.text(cl.nombre, 17, 57);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-    doc.text(`Proyectos registrados: ${cl.cobros.length}`, 17, 63);
+    doc.text(`Proyectos registrados: ${cl.cobros.length}${cl.telefono ? `   |   Tel: ${cl.telefono}` : ''}`, 17, 63);
 
     /* Tabla de proyectos */
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
@@ -452,9 +455,15 @@ Router.register('estado-cuenta', async (view) => {
           <button class="modal-close" onclick="UI.closeModal('modal-nuevo-cobro-ec')">${UI.icons.x}</button>
         </div>
         <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">Cliente <span class="required">*</span></label>
-            <input id="nc-cliente-ec" class="form-input" placeholder="Nombre del cliente">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Cliente <span class="required">*</span></label>
+              <input id="nc-cliente-ec" class="form-input" placeholder="Nombre del cliente">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Teléfono</label>
+              <input id="nc-telefono-ec" class="form-input" placeholder="Ej: 6456-2658">
+            </div>
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -469,6 +478,10 @@ Router.register('estado-cuenta', async (view) => {
           <div class="form-group">
             <label class="form-label">Descripción del proyecto</label>
             <input id="nc-desc-ec" class="form-input" placeholder="Ej: Fachada vidrio templado, Showroom…">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nota (plan de pago, observaciones…)</label>
+            <input id="nc-nota-ec" class="form-input" placeholder="Ej: Abono restante en 2 partes, 30 jun y 15 jul">
           </div>
           <div class="form-row">
             <div class="form-group">
