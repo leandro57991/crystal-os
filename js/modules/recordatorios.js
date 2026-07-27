@@ -11,14 +11,20 @@ const TIPO_COLOR = { oficina: 'var(--text-gray)', pago: 'var(--amber)', cotizar:
 Router.register('recordatorios', async (view) => {
   const today = new Date().toISOString().slice(0,10);
   let _imgBuffer = []; // imágenes de referencia del recordatorio en edición (tipo cotizar)
+  let paginaActivos = 1, porPaginaActivos = 15;
+  let paginaInact   = 1, porPaginaInact   = 15;
 
   async function render() {
     const [todos, cotizaciones] = await Promise.all([
       DB.getRecordatorios(),
       DB.getCotizaciones(),
     ]);
-    const activos = todos.filter(r => r.activo !== false);
+    const activos = todos.filter(r => r.activo !== false).sort((a,b)=>(a.hora||'').localeCompare(b.hora||''));
     const inact   = todos.filter(r => r.activo === false);
+    const pagAct  = UI.paginar(activos, paginaActivos, porPaginaActivos);
+    const pagIn   = UI.paginar(inact, paginaInact, porPaginaInact);
+    paginaActivos = pagAct.pagina;
+    paginaInact   = pagIn.pagina;
 
     // Cotizaciones aprobadas/abonadas con saldo pendiente que aún no tienen recordatorio de pago
     const pagoVinculados = new Set(
@@ -74,8 +80,9 @@ Router.register('recordatorios', async (view) => {
         <div class="card" style="margin-bottom:20px;">
           <div class="card-title" style="margin-bottom:16px;">Activos (${activos.length})</div>
           <div style="display:grid;gap:10px;">
-            ${activos.sort((a,b)=>(a.hora||'').localeCompare(b.hora||'')).map(r => renderCard(r)).join('')}
+            ${pagAct.items.map(r => renderCard(r)).join('')}
           </div>
+          ${UI.paginacionHTML(pagAct, 'window._recActivosPagina', 'window._recActivosPorPagina')}
         </div>
       ` : ''}
 
@@ -85,8 +92,9 @@ Router.register('recordatorios', async (view) => {
             <div class="card-title">Desactivados (${inact.length})</div>
           </div>
           <div style="display:grid;gap:8px;">
-            ${inact.map(r => renderCard(r, true)).join('')}
+            ${pagIn.items.map(r => renderCard(r, true)).join('')}
           </div>
+          ${UI.paginacionHTML(pagIn, 'window._recInactPagina', 'window._recInactPorPagina')}
         </div>
       ` : ''}
 
@@ -483,6 +491,11 @@ Router.register('recordatorios', async (view) => {
     UI.toast('Recordatorio eliminado', 'info');
     await render();
   };
+
+  window._recActivosPagina = (n) => { paginaActivos = n; render(); };
+  window._recActivosPorPagina = (n) => { porPaginaActivos = parseInt(n); paginaActivos = 1; render(); };
+  window._recInactPagina = (n) => { paginaInact = n; render(); };
+  window._recInactPorPagina = (n) => { porPaginaInact = parseInt(n); paginaInact = 1; render(); };
 
   await render();
 });

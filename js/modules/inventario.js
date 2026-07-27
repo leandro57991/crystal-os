@@ -6,6 +6,8 @@
 Router.register('inventario', async (view) => {
   let filtro   = 'Todos';
   let busqueda = '';
+  let pagina    = 1;
+  let porPagina = 15;
   const categorias = ['Todos','Vidrio','Aluminio','Smart','Ducha','Baranda','Fachada','Herraje','Servicio'];
 
   async function render() {
@@ -19,6 +21,9 @@ Router.register('inventario', async (view) => {
     const stockBajo = items.filter(i => i.stockMinimo && (i.stock||0) <= i.stockMinimo);
     const cont = document.getElementById('inv-content');
     if (!cont) return;
+
+    const pag = UI.paginar(items, pagina, porPagina);
+    pagina = pag.pagina;
 
     cont.innerHTML = `
       ${stockBajo.length > 0 ? `
@@ -48,7 +53,7 @@ Router.register('inventario', async (view) => {
             <tbody>
               ${items.length === 0
                 ? `<tr><td colspan="8" class="table-empty">Sin productos registrados</td></tr>`
-                : items.map(i => {
+                : pag.items.map(i => {
                     const stockPct = i.stockMinimo ? Math.min(100, ((i.stock||0)/i.stockMinimo)*100) : 100;
                     const cls = (i.stock||0) <= 0 ? 'danger' : (i.stock||0) <= (i.stockMinimo||0) ? 'amber' : '';
                     return `<tr>
@@ -75,14 +80,18 @@ Router.register('inventario', async (view) => {
             </tbody>
           </table>
         </div>
+        <div id="inv-pagination">${UI.paginacionHTML(pag, 'window._invPagina', 'window._invPorPagina')}</div>
       </div>
     `;
 
     cont.querySelectorAll('.filter-chip').forEach(btn => {
-      btn.addEventListener('click', () => { filtro = btn.dataset.cat; render(); });
+      btn.addEventListener('click', () => { filtro = btn.dataset.cat; pagina = 1; render(); });
     });
-    document.getElementById('inv-search')?.addEventListener('input', e => { busqueda = e.target.value; render(); });
+    document.getElementById('inv-search')?.addEventListener('input', e => { busqueda = e.target.value; pagina = 1; render(); });
   }
+
+  window._invPagina = (n) => { pagina = n; render(); };
+  window._invPorPagina = (n) => { porPagina = parseInt(n); pagina = 1; render(); };
 
   window.abrirMovimiento = (itemId, nombre, tipo) => {
     document.getElementById('mov-item-id').value = itemId;

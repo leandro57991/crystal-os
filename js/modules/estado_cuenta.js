@@ -6,6 +6,8 @@
 
 Router.register('estado-cuenta', async (view) => {
   let busqueda = '';
+  let pagina    = 1;
+  let porPagina = 15;
 
   async function buildClientData() {
     const [cobros, pagos] = await Promise.all([
@@ -41,6 +43,8 @@ Router.register('estado-cuenta', async (view) => {
 
     const totalCartera  = clientes.reduce((s,c)=>s+(c.totalFacturado-c.totalAbonado),0);
     const totalClientes = clientes.filter(c=>(c.totalFacturado-c.totalAbonado)>0.01).length;
+    const pag = UI.paginar(lista, pagina, porPagina);
+    pagina = pag.pagina;
 
     cont.innerHTML = `
       <div class="stats-row" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:20px;">
@@ -70,7 +74,7 @@ Router.register('estado-cuenta', async (view) => {
       <div style="display:flex;flex-direction:column;gap:12px;">
         ${lista.length === 0
           ? `<div class="card"><div class="empty-state"><h3>Sin clientes</h3><p>Registra cobros para ver estados de cuenta</p></div></div>`
-          : lista.map(cl => {
+          : pag.items.map(cl => {
               const saldoTotal = cl.totalFacturado - cl.totalAbonado;
               const badge = saldoTotal <= 0.01 ? 'badge-success' : saldoTotal > 0 ? 'badge-amber' : 'badge-gray';
               const lbl   = saldoTotal <= 0.01 ? 'Al día' : `Debe ${fmt(saldoTotal)}`;
@@ -97,10 +101,14 @@ Router.register('estado-cuenta', async (view) => {
             }).join('')
         }
       </div>
+      <div id="ec-pagination">${UI.paginacionHTML(pag, 'window._ecPagina', 'window._ecPorPagina')}</div>
     `;
 
-    document.getElementById('ec-search')?.addEventListener('input', e => { busqueda = e.target.value; render(); });
+    document.getElementById('ec-search')?.addEventListener('input', e => { busqueda = e.target.value; pagina = 1; render(); });
   }
+
+  window._ecPagina = (n) => { pagina = n; render(); };
+  window._ecPorPagina = (n) => { porPagina = parseInt(n); pagina = 1; render(); };
 
   function renderDetalleCliente(cl) {
     const saldoTotal = cl.totalFacturado - cl.totalAbonado;

@@ -5,6 +5,8 @@
 
 Router.register('proyectos', async (view) => {
   let filtro = 'Todos';
+  let pagina    = 1;
+  let porPagina = 15;
 
   async function render() {
     let proyectos = await DB.getProyectos();
@@ -18,6 +20,8 @@ Router.register('proyectos', async (view) => {
       pendiente: proyectos.filter(p=>p.estado==='Pendiente').length,
       terminado: proyectos.filter(p=>p.estado==='Terminado').length,
     };
+    const pag = UI.paginar(proyectos, pagina, porPagina);
+    pagina = pag.pagina;
 
     cont.innerHTML = `
       <div class="stats-row">
@@ -46,7 +50,7 @@ Router.register('proyectos', async (view) => {
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">
         ${proyectos.length === 0
           ? `<div class="card"><div class="empty-state"><h3>Sin proyectos</h3></div></div>`
-          : proyectos.map(p => {
+          : pag.items.map(p => {
               const badgeMap = { Pendiente:'badge-amber','En proceso':'badge-blue',Terminado:'badge-success',Cancelado:'badge-danger' };
               return `
                 <div class="card">
@@ -68,12 +72,16 @@ Router.register('proyectos', async (view) => {
             }).join('')
         }
       </div>
+      <div id="proy-pagination">${UI.paginacionHTML(pag, 'window._proyPagina', 'window._proyPorPagina')}</div>
     `;
 
     cont.querySelectorAll('.filter-chip').forEach(btn => {
-      btn.addEventListener('click', () => { filtro = btn.dataset.f; render(); });
+      btn.addEventListener('click', () => { filtro = btn.dataset.f; pagina = 1; render(); });
     });
   }
+
+  window._proyPagina = (n) => { pagina = n; render(); };
+  window._proyPorPagina = (n) => { porPagina = parseInt(n); pagina = 1; render(); };
 
   window.cambiarEstadoProyecto = async (id, estado) => {
     const p = await DB.getOne('proyectos', id);

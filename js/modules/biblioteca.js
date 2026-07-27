@@ -6,6 +6,8 @@
 Router.register('biblioteca', async (view) => {
   let busqueda = '';
   let carpetaFiltro = 'Todas';
+  let pagina    = 1;
+  let porPagina = 20;
 
   async function render() {
     let fotos = await DB.getBiblioteca() || [];
@@ -26,6 +28,9 @@ Router.register('biblioteca', async (view) => {
         (f.etiquetas || '').toLowerCase().includes(q)
       );
     }
+
+    const pag = UI.paginar(lista, pagina, porPagina);
+    pagina = pag.pagina;
 
     view.innerHTML = `
       <div class="page-header">
@@ -54,7 +59,7 @@ Router.register('biblioteca', async (view) => {
 
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;" id="bib-grid">
         ${lista.length === 0 ? `<div class="empty-state" style="grid-column:1/-1;">No hay fotos que coincidan con la búsqueda.</div>` : ''}
-        ${lista.map(f => `
+        ${pag.items.map(f => `
           <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">
             <div style="height:140px;background:var(--bg-light);border-bottom:1px solid var(--border-light);position:relative;">
               <img src="${f.base64}" style="width:100%;height:100%;object-fit:cover;">
@@ -70,6 +75,7 @@ Router.register('biblioteca', async (view) => {
           </div>
         `).join('')}
       </div>
+      <div id="bib-pagination">${UI.paginacionHTML(pag, 'window._bibPagina', 'window._bibPorPagina')}</div>
 
       <!-- Modal Subir Foto -->
       <div class="modal-overlay" id="modal-foto">
@@ -106,14 +112,19 @@ Router.register('biblioteca', async (view) => {
 
     document.getElementById('bib-carpeta')?.addEventListener('change', e => {
       carpetaFiltro = e.target.value;
+      pagina = 1;
       render();
     });
 
     document.getElementById('bib-search')?.addEventListener('input', e => {
       busqueda = e.target.value;
+      pagina = 1;
       render();
     });
   }
+
+  window._bibPagina = (n) => { pagina = n; render(); };
+  window._bibPorPagina = (n) => { porPagina = parseInt(n); pagina = 1; render(); };
 
   window.abrirModalFoto = () => {
     document.getElementById('foto-file').value = '';

@@ -11,6 +11,8 @@ Router.register('cotizaciones', async (view) => {
   let busqueda     = '';
   let fechaDesde   = '';
   let fechaHasta   = '';
+  let pagina       = 1;
+  let porPagina    = 15;
 
   function render() {
     let lista = [...cotizaciones].sort((a,b) => (b.numero||0)-(a.numero||0));
@@ -25,11 +27,16 @@ Router.register('cotizaciones', async (view) => {
     if (fechaDesde) lista = lista.filter(c => c.fecha && c.fecha >= fechaDesde);
     if (fechaHasta) lista = lista.filter(c => c.fecha && c.fecha <= fechaHasta);
 
+    const pag = UI.paginar(lista, pagina, porPagina);
+    pagina = pag.pagina;
+    document.getElementById('cotiz-pagination').innerHTML =
+      UI.paginacionHTML(pag, 'window._cotizPagina', 'window._cotizPorPagina');
+
     const table = document.getElementById('cotiz-table-body');
     if (!table) return;
-    table.innerHTML = lista.length === 0
+    table.innerHTML = pag.items.length === 0
       ? `<tr><td colspan="6" class="table-empty">No hay cotizaciones${busqueda ? ` con "${busqueda}"` : ''}</td></tr>`
-      : lista.map(c => {
+      : pag.items.map(c => {
           const abonoInfo = (c.estado === 'Abonado' && c.montoAbono)
             ? `<div style="font-size:11px;color:var(--text-gray);">Abono: ${fmt(c.montoAbono)}</div>`
             : (c.estado === 'Pagado' && c.montoAbono)
@@ -97,14 +104,19 @@ Router.register('cotizaciones', async (view) => {
           <tbody id="cotiz-table-body"></tbody>
         </table>
       </div>
+      <div id="cotiz-pagination"></div>
     </div>
   `;
 
   render();
 
+  window._cotizPagina = (n) => { pagina = n; render(); };
+  window._cotizPorPagina = (n) => { porPagina = parseInt(n); pagina = 1; render(); };
+
   view.querySelectorAll('.filter-chip').forEach(btn => {
     btn.addEventListener('click', () => {
       filtroEstado = btn.dataset.estado;
+      pagina = 1;
       view.querySelectorAll('.filter-chip').forEach(b => b.classList.toggle('active', b.dataset.estado === filtroEstado));
       render();
     });
@@ -112,22 +124,26 @@ Router.register('cotizaciones', async (view) => {
 
   document.getElementById('cotiz-search').addEventListener('input', e => {
     busqueda = e.target.value;
+    pagina = 1;
     render();
   });
 
   document.getElementById('cotiz-fecha-desde').addEventListener('change', e => {
     fechaDesde = e.target.value;
+    pagina = 1;
     render();
   });
 
   document.getElementById('cotiz-fecha-hasta').addEventListener('change', e => {
     fechaHasta = e.target.value;
+    pagina = 1;
     render();
   });
 
   document.getElementById('cotiz-fecha-clear').addEventListener('click', () => {
     fechaDesde = '';
     fechaHasta = '';
+    pagina = 1;
     document.getElementById('cotiz-fecha-desde').value = '';
     document.getElementById('cotiz-fecha-hasta').value = '';
     render();

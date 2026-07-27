@@ -193,6 +193,51 @@ const UI = (() => {
     if (el) el.innerHTML = `<div class="empty-state"><p>${msg}</p></div>`;
   }
 
+  /* ── PAGINACIÓN ──────────────────────────────────────────
+     Uso típico dentro de un módulo:
+       let pagina = 1, porPagina = 15;
+       function render() {
+         let lista = [...datos].filter(...);
+         const pag = UI.paginar(lista, pagina, porPagina);
+         pagina = pag.pagina;
+         tbody.innerHTML = pag.items.map(...).join('');
+         document.getElementById('mi-paginacion').innerHTML =
+           UI.paginacionHTML(pag, 'window._miPagina', 'window._miPorPagina');
+       }
+       window._miPagina = (n) => { pagina = n; render(); };
+       window._miPorPagina = (n) => { porPagina = parseInt(n); pagina = 1; render(); };
+  ------------------------------------------------------- */
+
+  function paginar(lista, pagina, porPagina) {
+    const total = lista.length;
+    const totalPaginas = Math.max(1, Math.ceil(total / porPagina));
+    const p = Math.min(Math.max(1, pagina || 1), totalPaginas);
+    const inicio = (p - 1) * porPagina;
+    return { items: lista.slice(inicio, inicio + porPagina), pagina: p, totalPaginas, total, porPagina };
+  }
+
+  function paginacionHTML(pag, fnIrA, fnPorPagina) {
+    if (pag.total === 0) return '';
+    const { pagina, totalPaginas, total, porPagina } = pag;
+    return `
+      <div class="pagination">
+        <div class="pagination-info">${total} en total</div>
+        <div class="pagination-controls">
+          <button class="pagination-btn" ${pagina <= 1 ? 'disabled' : ''} onclick="${fnIrA}(${pagina - 1})" aria-label="Página anterior">${icons.chevronLeft}</button>
+          <span class="pagination-page">Página ${pagina} de ${totalPaginas}</span>
+          <button class="pagination-btn" ${pagina >= totalPaginas ? 'disabled' : ''} onclick="${fnIrA}(${pagina + 1})" aria-label="Página siguiente">${icons.chevronRight}</button>
+        </div>
+        ${fnPorPagina ? `
+        <div class="pagination-size">
+          <label>Mostrar</label>
+          <select onchange="${fnPorPagina}(this.value)">
+            ${[10, 15, 20].map(n => `<option value="${n}" ${porPagina == n ? 'selected' : ''}>${n}</option>`).join('')}
+          </select>
+        </div>` : ''}
+      </div>
+    `;
+  }
+
   /* ── ICON REGISTRY ─────────────────────────────────── */
   /* Using Lucide CDN — these are inlined SVG snippets */
   const icons = {
@@ -217,6 +262,7 @@ const UI = (() => {
     bell:          `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
     search:        `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
     chevronRight:  `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>`,
+    chevronLeft:   `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`,
     arrowLeft:     `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>`,
     logout:        `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
     hamburger:     `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`,
@@ -229,7 +275,8 @@ const UI = (() => {
     toast, openModal, closeModal, closeAllModals,
     buildSidebar, updateBreadcrumb, refreshNotifBadge,
     openMobileSidebar, closeMobileSidebar,
-    showLogin, showApp, confirm, showLoading, icons
+    showLogin, showApp, confirm, showLoading, icons,
+    paginar, paginacionHTML
   };
 })();
 

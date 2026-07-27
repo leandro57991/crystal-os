@@ -6,6 +6,8 @@
 Router.register('cobros', async (view) => {
   let filtro  = 'Todos';
   let busqueda = '';
+  let pagina    = 1;
+  let porPagina = 15;
 
   async function loadAndRender() {
     const cobros = await DB.getCobros();
@@ -48,6 +50,9 @@ Router.register('cobros', async (view) => {
 
     const cont = document.getElementById('cobros-content');
     if (!cont) return;
+
+    const pag = UI.paginar(lista, pagina, porPagina);
+    pagina = pag.pagina;
 
     cont.innerHTML = `
       <!-- Stats -->
@@ -108,14 +113,15 @@ Router.register('cobros', async (view) => {
             <tbody id="cobros-tbody"></tbody>
           </table>
         </div>
+        <div id="cobros-pagination">${UI.paginacionHTML(pag, 'window._cobrosPagina', 'window._cobrosPorPagina')}</div>
       </div>
     `;
 
     // Tabla body
     const tbody = document.getElementById('cobros-tbody');
-    tbody.innerHTML = lista.length === 0
+    tbody.innerHTML = pag.items.length === 0
       ? `<tr><td colspan="8" class="table-empty">Sin registros</td></tr>`
-      : lista.map(c => {
+      : pag.items.map(c => {
           const badge = c.estado==='Pagado'?'badge-success':c.diasVence<0?'badge-danger':c.diasVence<=7?'badge-amber':'badge-blue';
           const label = c.estado==='Pagado'?'Pagado':c.diasVence<0?`${Math.abs(c.diasVence)}d vencido`:c.diasVence<=7?`${c.diasVence}d restantes`:'Al día';
           return `<tr>
@@ -137,10 +143,13 @@ Router.register('cobros', async (view) => {
 
     // Bind filtros
     cont.querySelectorAll('.filter-chip').forEach(btn => {
-      btn.addEventListener('click', () => { filtro = btn.dataset.f; loadAndRender(); });
+      btn.addEventListener('click', () => { filtro = btn.dataset.f; pagina = 1; loadAndRender(); });
     });
-    document.getElementById('cobro-search')?.addEventListener('input', e => { busqueda = e.target.value; loadAndRender(); });
+    document.getElementById('cobro-search')?.addEventListener('input', e => { busqueda = e.target.value; pagina = 1; loadAndRender(); });
   }
+
+  window._cobrosPagina = (n) => { pagina = n; loadAndRender(); };
+  window._cobrosPorPagina = (n) => { porPagina = parseInt(n); pagina = 1; loadAndRender(); };
 
   window.abrirModalPago = (cobroId, nombre, saldo) => {
     document.getElementById('pago-cobro-id').value = cobroId;
