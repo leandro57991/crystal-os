@@ -548,7 +548,8 @@
   vertical-align: middle;
 }
 .lineas-table td input,
-.lineas-table td select {
+.lineas-table td select,
+.lineas-table td textarea {
   width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--border);
@@ -558,7 +559,8 @@
   outline: none;
 }
 .lineas-table td input:focus,
-.lineas-table td select:focus {
+.lineas-table td select:focus,
+.lineas-table td textarea:focus {
   border-color: var(--green-mid);
 }
 .lineas-table .auto-field {

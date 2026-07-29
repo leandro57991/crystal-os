@@ -282,7 +282,7 @@ Router.register('nueva-cotizacion', async (view, params) => {
                 </button>
               </div>
               ${esManual
-                ? `<input type="text" value="${l.descripcion||''}" placeholder="Descripción del servicio…" style="min-width:180px;" onchange="window._lineaChange(${i},'descripcion',this.value)">`
+                ? `<textarea class="desc-textarea" rows="1" placeholder="Descripción del servicio…" style="min-width:180px;width:100%;resize:none;overflow-y:auto;max-height:120px;line-height:1.4;font-family:inherit;" onchange="window._lineaChange(${i},'descripcion',this.value)" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px';">${l.descripcion||''}</textarea>`
                 : `<select onchange="window._lineaChange(${i},'producto',this.value)" style="min-width:180px;">
                     <option value="">— Seleccionar —</option>
                     ${productos.map(p => `<option value="${p.nombre}" ${p.nombre===l.producto?'selected':''}>${p.nombre}</option>`).join('')}
@@ -315,6 +315,10 @@ Router.register('nueva-cotizacion', async (view, params) => {
           </td>
         </tr>`;
     }).join('');
+    tbody.querySelectorAll('.desc-textarea').forEach(ta => {
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+    });
     renderHeaderLineas();
     refreshTotals();
   }
