@@ -828,25 +828,38 @@ Router.register('nueva-cotizacion', async (view, params) => {
     });
   };
 
-  window._asistentePrecio = (precio, ancho, alto, desc) => {
-    // Auto-llenar la primera línea vacía del formulario
-    if (lineas.length === 0) {
-      lineas.push({ tipo:'manual', descripcion:'', ancho:'', alto:'', m2:'', precio:'', total:'', unidad:'m²' });
+  /* Aplica una propuesta del asistente: redacción + medidas + precio, respetando
+     si el trabajo se cobra por m² o por unidad (instalación/reparación). */
+  window._asistenteAplicar = (p) => {
+    const prop = typeof p === 'string' ? JSON.parse(p) : p;
+    const ultima = lineas[lineas.length - 1];
+    const vacia = ultima && !ultima.producto && !ultima.descripcion && !(parseFloat(ultima.total) > 0);
+    if (!vacia) {
+      lineas.push({ tipo:'manual', producto:'', descripcion:'', ancho:'', alto:'', m2:'', precio:'', total:'', cantidad:1, unidad:'m²', foto:'' });
     }
     const idx = lineas.length - 1;
-    if (precio > 0) lineas[idx].precio = precio;
-    if (ancho > 0)  lineas[idx].ancho = ancho;
-    if (alto > 0)   lineas[idx].alto  = alto;
-    if (desc)       { lineas[idx].descripcion = desc; lineas[idx].tipo = 'manual'; }
-    if (ancho > 0 && alto > 0) {
-      lineas[idx].unidad = 'm²';
-      lineas[idx] = calcLinea(lineas[idx]);
+    const l = lineas[idx];
+
+    l.tipo   = 'manual';
+    l.unidad = prop.modo === 'm2' ? 'm²' : 'unidad';
+    if (prop.desc)  l.descripcion = prop.desc;
+    if (prop.modo === 'm2') {
+      if (prop.ancho > 0) l.ancho = prop.ancho;
+      if (prop.alto  > 0) l.alto  = prop.alto;
     }
+    if (prop.precio > 0) l.precio = prop.precio;
+    l.cantidad = l.cantidad || 1;
+    l.totalManual = false;
+    lineas[idx] = calcLinea(l);
+
     renderLineas();
-    UI.toast('Precio y medidas aplicados a la cotización', 'success');
-    // Scroll hacia el formulario
+    UI.toast('Propuesta agregada a la cotización', 'success');
     document.getElementById('cotiz-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  // Compatibilidad con el botón viejo del asistente
+  window._asistentePrecio = (precio, ancho, alto, desc) =>
+    window._asistenteAplicar({ precio, ancho, alto, desc, modo: (ancho > 0 && alto > 0) ? 'm2' : 'unidad' });
 
   // En móvil arrancar el asistente colapsado para no tapar el formulario
   if (window.innerWidth <= 768) {

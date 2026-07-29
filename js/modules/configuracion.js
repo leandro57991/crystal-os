@@ -15,6 +15,7 @@ Router.register('configuracion', async (view) => {
       tel:      await DB.getConfig('empresa_tel',    '6456-2658'),
       email:    await DB.getConfig('empresa_email',  'crystalservicejj@gmail.com'),
       itbms:    await DB.getConfig('itbms',           0.07),
+      transporte: await DB.getConfig('transporte_zonas', {}),
     };
 
     view.innerHTML = `
@@ -265,6 +266,21 @@ Router.register('configuracion', async (view) => {
         </div>
         <button class="btn btn-primary" onclick="window.guardarEmpresa()" style="margin-top:8px;">Guardar configuración</button>
       </div>
+
+      <div class="card" style="max-width:520px;margin-top:20px;">
+        <div class="card-title" style="margin-bottom:6px;">Transporte por zona</div>
+        <p style="font-size:12px;color:var(--text-gray);margin-bottom:16px;">
+          Lo que se cobra de transporte según dónde quede el proyecto. El asistente
+          detecta la zona en la conversación y aplica la tarifa que definas aquí.
+        </p>
+        ${(window.Asistente?.ZONAS || []).map(z => `
+          <div class="form-group">
+            <label class="form-label">${z.label}</label>
+            <input id="transp-${z.id}" class="form-input" type="number" min="0" step="0.01"
+                   placeholder="0.00" value="${(config.transporte && config.transporte[z.id] != null) ? config.transporte[z.id] : ''}">
+          </div>`).join('')}
+        <button class="btn btn-primary" onclick="window.guardarTransporte()" style="margin-top:8px;">Guardar transporte</button>
+      </div>
     `;
   }
 
@@ -275,6 +291,17 @@ Router.register('configuracion', async (view) => {
     const itbmsPct = parseFloat(document.getElementById('emp-itbms').value) || 7;
     await DB.setConfig('itbms', itbmsPct / 100);
     UI.toast('Configuración guardada', 'success');
+  };
+
+  window.guardarTransporte = async () => {
+    const zonas = window.Asistente?.ZONAS || [];
+    const tarifas = {};
+    for (const z of zonas) {
+      const v = document.getElementById('transp-' + z.id)?.value;
+      if (v !== '' && v != null) tarifas[z.id] = parseFloat(v) || 0;
+    }
+    await DB.setConfig('transporte_zonas', tarifas);
+    UI.toast('Tarifas de transporte guardadas', 'success');
   };
 
   /* ── PESTAÑA: USUARIOS ─────────────────────────────────── */
