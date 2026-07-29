@@ -225,7 +225,11 @@ Router.register('nueva-cotizacion', async (view, params) => {
     const cant  = parseFloat(l.cantidad) || 1;
     const esM2  = l.unidad !== 'unidad' && l.unidad !== 'global';
     l.m2    = esM2 ? (ancho * alto).toFixed(2) : '—';
-    l.total = esM2 ? (ancho * alto * precio * cant) : (precio * cant);
+    // Si el total ya fue colocado a mano, no se recalcula solo — precio y total
+    // quedan independientes hasta que se presione "Recalcular" en esa línea.
+    if (!l.totalManual) {
+      l.total = esM2 ? (ancho * alto * precio * cant) : (precio * cant);
+    }
     return l;
   }
 
@@ -290,8 +294,13 @@ Router.register('nueva-cotizacion', async (view, params) => {
              </td>` : ''}
           ${configCols.m2 ? `<td>${esM2 ? `<div class="auto-field">${l.m2||'—'}</div>` : '—'}</td>` : ''}
           ${configCols.cantidad ? `<td><input type="number" min="1" value="${l.cantidad||1}" onchange="window._lineaChange(${i},'cantidad',this.value)" style="max-width:60px;"></td>` : ''}
-          <td><input type="number" min="0" step="0.01" value="${l.precio||0}" onchange="window._lineaChange(${i},'precio',this.value)" style="max-width:90px;" title="Precio unitario (por m² o por unidad)"></td>
-          <td><input type="number" min="0" step="0.01" value="${l.total||0}" onchange="window._lineaChange(${i},'total',this.value)" style="max-width:100px;" title="Total de la línea — puedes colocarlo directo si el jefe ya te da el precio final"></td>
+          <td><input type="number" min="0" step="0.01" value="${l.precio||0}" onchange="window._lineaChange(${i},'precio',this.value)" style="max-width:90px;" title="Precio unitario — no afecta el total si ya lo colocaste a mano"></td>
+          <td>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <input type="number" min="0" step="0.01" value="${l.total||0}" onchange="window._lineaChange(${i},'total',this.value)" style="max-width:90px;${l.totalManual?'border-color:var(--green-mid);background:#f0fdf4;':''}" title="Total de la línea — puedes colocarlo directo si el jefe ya te da el precio final">
+              ${l.totalManual ? `<button type="button" class="btn btn-ghost btn-sm" onclick="window._recalcularTotal(${i})" title="Volver a calcular el total desde precio × m² × cantidad" style="padding:2px 6px;font-size:11px;">↺</button>` : ''}
+            </div>
+          </td>
           <td>
             <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="window._removeLinea(${i})">${UI.icons.trash}</button>
           </td>
@@ -351,6 +360,7 @@ Router.register('nueva-cotizacion', async (view, params) => {
     lineas[i].alto = '';
     lineas[i].m2 = '';
     lineas[i].total = '';
+    lineas[i].totalManual = false;
     lineas[i].unidad = 'm²';
     lineas[i].foto = '';
     renderLineas();
@@ -370,19 +380,24 @@ Router.register('nueva-cotizacion', async (view, params) => {
     }
     if (field === 'total') {
       // Total colocado a mano (cuando el jefe ya da el precio final, no por m²).
-      // Se respeta el total tal cual y se deriva el precio unitario para que quede
-      // registrado, pero si luego editan el precio, este vuelve a mandar sin problema.
-      const ancho = parseFloat(lineas[i].ancho) || 0;
-      const alto  = parseFloat(lineas[i].alto)  || 0;
-      const cant  = parseFloat(lineas[i].cantidad) || 1;
-      const esM2  = lineas[i].unidad !== 'unidad' && lineas[i].unidad !== 'global';
-      lineas[i].m2    = esM2 ? (ancho * alto).toFixed(2) : '—';
+      // Queda fijo tal cual lo escribieron: no se toca el precio ni se recalcula
+      // solo con cambios de ancho/alto/cantidad hasta que presionen "Recalcular".
       lineas[i].total = parseFloat(val) || 0;
-      const base = esM2 ? (ancho * alto * cant) : cant;
-      if (base > 0) lineas[i].precio = +(lineas[i].total / base).toFixed(2);
+      lineas[i].totalManual = true;
+    } else if (field === 'precio') {
+      // El precio es independiente: si el total ya fue fijado a mano, escribir
+      // aquí NO lo sobreescribe (queda solo como referencia hasta "Recalcular").
+      lineas[i].precio = val;
+      lineas[i] = calcLinea(lineas[i]);
     } else {
       lineas[i] = calcLinea(lineas[i]);
     }
+    renderLineas();
+  };
+
+  window._recalcularTotal = (i) => {
+    lineas[i].totalManual = false;
+    lineas[i] = calcLinea(lineas[i]);
     renderLineas();
   };
 
