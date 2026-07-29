@@ -1687,33 +1687,41 @@ async function generarPDFCotizacion(id, fromForm = false) {
     doc.text('GRACIAS POR SU CONFIANZA', W - 60, by + 35);
   }
 
-  /* ── MARCA DE AGUA ── */
+  /* ── MARCA DE AGUA ──
+     Se dibuja en TODAS las páginas del documento (cuando la cotización es
+     larga y la caja de condiciones saltó a una página nueva, esa página
+     también debe llevar su marca de agua, no solo la primera). */
   if (typeof doc.GState === 'function') {
-    if (estadoPDF === 'Pagado') {
-      doc.saveGraphicsState();
-      doc.setGState(new doc.GState({ opacity: 0.12 }));
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(64);
-      doc.setTextColor(34, 197, 94);
-      doc.text('PAGADO', W/2, H/2, { align: 'center', angle: 35 });
-      doc.restoreGraphicsState();
-    } else if (estadoPDF === 'Cancelada') {
-      // Cotización que ya no se realizará
-      doc.saveGraphicsState();
-      doc.setGState(new doc.GState({ opacity: 0.12 }));
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(64);
-      doc.setTextColor(239, 68, 68);
-      doc.text('CANCELADA', W/2, H/2, { align: 'center', angle: 35 });
-      doc.restoreGraphicsState();
-    } else if (logoBase64) {
-      doc.saveGraphicsState();
-      doc.setGState(new doc.GState({ opacity: 0.05 }));
-      const wmW = 150;
-      const wmH = wmW / logoRatio;
-      doc.addImage(logoBase64, 'PNG', W/2 - wmW/2, H/2 - wmH/2, wmW, wmH);
-      doc.restoreGraphicsState();
+    const totalPaginas = doc.internal.getNumberOfPages();
+    for (let pag = 1; pag <= totalPaginas; pag++) {
+      doc.setPage(pag);
+      if (estadoPDF === 'Pagado') {
+        doc.saveGraphicsState();
+        doc.setGState(new doc.GState({ opacity: 0.12 }));
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(64);
+        doc.setTextColor(34, 197, 94);
+        doc.text('PAGADO', W/2, H/2, { align: 'center', angle: 35 });
+        doc.restoreGraphicsState();
+      } else if (estadoPDF === 'Cancelada') {
+        // Cotización que ya no se realizará
+        doc.saveGraphicsState();
+        doc.setGState(new doc.GState({ opacity: 0.12 }));
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(64);
+        doc.setTextColor(239, 68, 68);
+        doc.text('CANCELADA', W/2, H/2, { align: 'center', angle: 35 });
+        doc.restoreGraphicsState();
+      } else if (logoBase64) {
+        doc.saveGraphicsState();
+        doc.setGState(new doc.GState({ opacity: 0.05 }));
+        const wmW = 150;
+        const wmH = wmW / logoRatio;
+        doc.addImage(logoBase64, 'PNG', W/2 - wmW/2, H/2 - wmH/2, wmW, wmH);
+        doc.restoreGraphicsState();
+      }
     }
+    doc.setPage(totalPaginas);
   }
 
   doc.save(`Cotizacion_${c.numero}_${(c.clienteNombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}.pdf`);
