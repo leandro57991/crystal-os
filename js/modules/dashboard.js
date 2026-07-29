@@ -21,7 +21,7 @@ Router.register('dashboard', async (view) => {
 
   // KPIs
   const cotzMes    = cotizaciones.filter(c => c.fecha >= inicioMes && c.estado !== 'Borrador');
-  const facturado  = cotzMes.filter(c => ['Aprobada','Abonado','Pagado','Completado','Factura'].includes(c.estado)).reduce((s,c) => s + (c.total||0), 0);
+  const facturado  = cotzMes.filter(c => ['Aprobada','Abonado','Pagado'].includes(c.estado)).reduce((s,c) => s + (c.total||0), 0);
   const cobrado    = cobros.filter(c => c.fecha >= inicioMes).reduce((s,c) => s + (c.pagado||0), 0);
   const porCobrar  = cobros.filter(c => c.estado !== 'Pagado').reduce((s,c) => s + (c.saldo||0), 0);
   const sinRespuesta = cotizaciones.filter(c => c.estado === 'Enviada').length;
@@ -38,15 +38,6 @@ Router.register('dashboard', async (view) => {
       alertas.push({ tipo: 'seguimiento', msg: `Último aviso cotización #${c.numero} — ${c.clienteNombre || 'Cliente'} (1 semana)`, id: c.id });
     }
   }
-
-  // Cobros urgentes (vencidos o por vencer en 7 días)
-  const urgentes = cobros.filter(c => c.estado !== 'Pagado' && (c.saldo||0) > 0)
-    .map(c => {
-      const dias = Math.floor((new Date(c.vencimiento||fechaHoy) - hoy) / 86400000);
-      return { ...c, diasVence: dias };
-    })
-    .sort((a,b) => a.diasVence - b.diasVence)
-    .slice(0, 6);
 
   // Últimas cotizaciones
   const ultimasCotiz = cotizaciones.slice(0, 5);
@@ -122,43 +113,21 @@ Router.register('dashboard', async (view) => {
       </div>
     </div>
 
-    <!-- Gráfico + Cobros urgentes -->
-    <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:24px;" class="dash-middle">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">Facturación últimos 6 meses</div>
-        </div>
-        <div class="bar-chart">
-          ${meses6.map(m => {
-            const h = maxBar > 0 ? Math.max(4, (m.total / maxBar) * 100) : 4;
-            return `
-              <div class="bar-col">
-                <div class="bar-col-val">${m.total > 0 ? '$'+Math.round(m.total/1000)+'k' : ''}</div>
-                <div class="bar-fill" style="height:${h}%" title="${fmt(m.total)}"></div>
-                <div class="bar-col-label">${m.mes}</div>
-              </div>`;
-          }).join('')}
-        </div>
+    <!-- Gráfico -->
+    <div class="card" style="margin-bottom:24px;">
+      <div class="card-header">
+        <div class="card-title">Facturación últimos 6 meses</div>
       </div>
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">Cobros urgentes</div>
-          <button class="btn btn-sm btn-ghost" onclick="Router.go('cobros')">Ver todos</button>
-        </div>
-        ${urgentes.length === 0
-          ? '<div class="table-empty">Sin cobros pendientes</div>'
-          : urgentes.map(c => {
-              const badge = c.diasVence < 0 ? 'badge-danger' : c.diasVence <= 7 ? 'badge-amber' : 'badge-success';
-              const label = c.diasVence < 0 ? `${Math.abs(c.diasVence)}d vencido` : `${c.diasVence}d restantes`;
-              return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
-                <div style="flex:1;min-width:0;">
-                  <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.clienteNombre||'—'}</div>
-                  <div style="color:var(--text-gray);">${fmt(c.saldo||0)}</div>
-                </div>
-                <span class="badge ${badge}">${label}</span>
-              </div>`;
-            }).join('')
-        }
+      <div class="bar-chart">
+        ${meses6.map(m => {
+          const h = maxBar > 0 ? Math.max(4, (m.total / maxBar) * 100) : 4;
+          return `
+            <div class="bar-col">
+              <div class="bar-col-val">${m.total > 0 ? '$'+Math.round(m.total/1000)+'k' : ''}</div>
+              <div class="bar-fill" style="height:${h}%" title="${fmt(m.total)}"></div>
+              <div class="bar-col-label">${m.mes}</div>
+            </div>`;
+        }).join('')}
       </div>
     </div>
 
@@ -228,20 +197,13 @@ function fmt(n) {
 
 function estadoBadge(estado) {
   const map = {
-    'Borrador':       'badge-gray',
-    'Pendiente':      'badge-amber',
-    'En negociación': 'badge-blue',
-    'Aprobada':       'badge-success',
-    'Aprobado':       'badge-success',
-    'Abonado':        'badge-blue',
-    'Completado':     'badge-success',
-    'Cancelado':      'badge-danger',
-    'Rechazada':      'badge-danger',
-    'Perdida':        'badge-danger',
-    'Enviada':        'badge-amber',
-    'Pagado':         'badge-success',
-    'Parcial':        'badge-amber',
-    'Factura':        'badge-blue',
+    'Borrador':   'badge-gray',
+    'Enviada':    'badge-amber',
+    'Aprobada':   'badge-success',
+    'Abonado':    'badge-blue',
+    'Pagado':     'badge-success',
+    'Cancelada':  'badge-danger',
+    'Parcial':    'badge-amber', // cobros
   };
   return `<span class="badge ${map[estado]||'badge-gray'}">${estado||'—'}</span>`;
 }

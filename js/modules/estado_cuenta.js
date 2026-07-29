@@ -260,6 +260,54 @@ Router.register('estado-cuenta', async (view) => {
 
   /* ── PDF Estado de Cuenta ─────────────────────────────── */
 
+  // Helpers de dibujo para los íconos/insignias del diseño (sin depender de
+  // emojis ni fuentes con glifos especiales — todo son formas vectoriales).
+  function _polar(cx, cy, r, angDeg) {
+    const rad = angDeg * Math.PI / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  }
+
+  function _drawCheckBadge(doc, cx, cy, r, bgColor) {
+    doc.setFillColor(...bgColor);
+    doc.circle(cx, cy, r, 'F');
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(Math.max(0.5, r * 0.16));
+    doc.line(cx - r * 0.45, cy, cx - r * 0.05, cy + r * 0.4);
+    doc.line(cx - r * 0.05, cy + r * 0.4, cx + r * 0.5, cy - r * 0.35);
+  }
+
+  function _drawIconBadge(doc, cx, cy, r, bgColor, glyph) {
+    doc.setFillColor(...bgColor);
+    doc.circle(cx, cy, r, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(r * 1.15);
+    doc.text(glyph, cx, cy + r * 0.35, { align: 'center' });
+  }
+
+  function _drawRing(doc, cx, cy, r, pct, colorDone, colorRemain, lineWidth) {
+    const steps = 72;
+    doc.setLineWidth(lineWidth);
+    doc.setDrawColor(...colorRemain);
+    let prev = _polar(cx, cy, r, -90);
+    for (let i = 1; i <= steps; i++) {
+      const pt = _polar(cx, cy, r, -90 + (360 * i / steps));
+      doc.line(prev.x, prev.y, pt.x, pt.y);
+      prev = pt;
+    }
+    const sweep = 360 * Math.min(Math.max(pct, 0), 100) / 100;
+    if (sweep > 0) {
+      doc.setDrawColor(...colorDone);
+      const stepsFg = Math.max(2, Math.round(steps * sweep / 360));
+      prev = _polar(cx, cy, r, -90);
+      for (let i = 1; i <= stepsFg; i++) {
+        const pt = _polar(cx, cy, r, -90 + (sweep * i / stepsFg));
+        doc.line(prev.x, prev.y, pt.x, pt.y);
+        prev = pt;
+      }
+    }
+  }
+
   window.generarPDFEstadoCuenta = async (nombreCliente) => {
     if (typeof window.jspdf === 'undefined') {
       UI.toast('Librería PDF no cargada. Verifica tu conexión.', 'error'); return;
@@ -270,41 +318,149 @@ Router.register('estado-cuenta', async (view) => {
     if (!cl) { UI.toast('Cliente no encontrado', 'error'); return; }
 
     const saldoTotal = cl.totalFacturado - cl.totalAbonado;
+    const pctPagado  = cl.totalFacturado > 0 ? (cl.totalAbonado / cl.totalFacturado) * 100 : 0;
+    const estado     = saldoTotal <= 0.01 ? 'PAGADO' : (cl.totalAbonado > 0 ? 'ABONADO' : 'PENDIENTE');
+    const colorEstado = estado === 'PAGADO' ? [34, 197, 94] : estado === 'ABONADO' ? [245, 158, 11] : [239, 68, 68];
+    const bgEstado     = estado === 'PAGADO' ? [220, 252, 231] : estado === 'ABONADO' ? [254, 243, 199] : [254, 226, 226];
 
     const { jsPDF } = window.jspdf;
     const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
-    const ancho = 215.9;
-    const hoy   = new Date().toLocaleDateString('es-PA', { day:'numeric', month:'long', year:'numeric' });
+    const W     = 215.9;
+    const H     = 279.4;
+    const ML    = 15;
+    const MR    = W - 15;
+    const green = [31, 122, 60];
+    const hoy   = new Date().toLocaleDateString('es-PA', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    /* Header */
-    doc.setFillColor(31, 122, 60);
-    doc.rect(0, 0, ancho, 42, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.text('CRYSTAL SERVICES PANAMÁ', 15, 16);
-    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-    doc.text('ALUMINIO · VIDRIO · MANTENIMIENTO', 15, 23);
-    doc.text('Tel: 6456-2658 | crystalservicejj@gmail.com', 15, 29);
-    doc.text('San Miguelito, Ciudad de Panamá', 15, 35);
+    /* ── Franja superior ── */
+    doc.setFillColor(...green);
+    doc.rect(0, 0, W, 3, 'F');
 
-    doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-    doc.text('ESTADO DE CUENTA', ancho - 15, 20, { align: 'right' });
-    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-    doc.text(`Fecha: ${hoy}`, ancho - 15, 27, { align: 'right' });
+    /* ── Header: logo + datos empresa | título + fecha + estado ── */
+    const logoBase64 = window.PDF_ASSETS?.logo || null;
+    let logoRatio = 903 / 462;
+    let logoW = 26 * logoRatio;
+    if (logoBase64) {
+      try {
+        const props = doc.getImageProperties(logoBase64);
+        if (props?.width && props?.height) logoRatio = props.width / props.height;
+        logoW = 24 * logoRatio;
+        doc.addImage(logoBase64, 'PNG', ML, 8, logoW, 24);
+      } catch (e) { logoW = 0; }
+    }
 
-    /* Datos del cliente */
+    const xInfo = ML + logoW + 8;
     doc.setTextColor(26, 26, 26);
-    doc.setFillColor(244, 249, 246);
-    doc.rect(12, 48, ancho - 24, 18, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
-    doc.text(cl.nombre, 17, 57);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-    doc.text(`Proyectos registrados: ${cl.cobros.length}${cl.telefono ? `   |   Tel: ${cl.telefono}` : ''}`, 17, 63);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5);
+    const nombreEmpresa = 'CRYSTAL SERVICE PANAMÁ';
+    doc.text(nombreEmpresa, xInfo, 15);
+    const anchoNombreEmpresa = doc.getTextWidth(nombreEmpresa);
+    doc.setTextColor(...green);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
+    doc.text('ALUMINIO  •  VIDRIO  •  MANTENIMIENTO', xInfo, 20);
+    doc.setTextColor(80, 80, 80);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    doc.text('Tel: 6456-2658', xInfo, 26);
+    doc.text('crystalservicejj@gmail.com', xInfo, 31);
+    doc.text('San Miguelito, Ciudad de Panamá', xInfo, 36);
 
-    /* Tabla de proyectos */
+    const xDiv = Math.max(125, xInfo + anchoNombreEmpresa + 6);
+    doc.setDrawColor(209, 232, 217);
+    doc.setLineWidth(0.3);
+    doc.line(xDiv, 8, xDiv, 38);
+
+    const xRight = xDiv + 8;
+    doc.setTextColor(26, 26, 26);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(17);
+    doc.text('ESTADO', xRight, 15);
+    doc.text('DE CUENTA', xRight, 23);
+    doc.setTextColor(107, 114, 128);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    doc.text('Fecha de emisión:', xRight, 29);
+    doc.setTextColor(26, 26, 26);
+    doc.setFont('helvetica', 'bold');
+    doc.text(hoy, xRight, 33.5);
+
+    // Insignia de estado actual
+    const badgeY = 35.5, badgeH = 8;
+    doc.setFillColor(...bgEstado);
+    doc.roundedRect(xRight, badgeY, MR - xRight, badgeH, 2, 2, 'F');
+    _drawCheckBadge(doc, xRight + 5, badgeY + badgeH / 2, 2.6, colorEstado);
+    doc.setTextColor(...colorEstado);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    doc.text(estado, xRight + 10, badgeY + badgeH / 2 + 1.4);
+
+    /* ── Datos del cliente ── */
+    const clY = 45;
+    const clH = 32;
+    doc.setFillColor(244, 249, 246);
+    doc.setDrawColor(209, 232, 217);
+    doc.roundedRect(ML, clY, MR - ML, clH, 3, 3, 'FD');
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    doc.setTextColor(...green);
+    doc.text('CLIENTE', ML + 6, clY + 8);
+
+    const colL = ML + 6, colR = ML + (MR - ML) / 2 + 6;
+    const filas = [
+      ['Nombre:', cl.nombre],
+      ['Proyectos:', `${cl.cobros.length} registrado(s)`],
+      ['Dirección:', '—'],
+      ['Teléfono:', cl.telefono || '—'],
+    ];
+    const filasR = [
+      ['Fecha de inicio:', '—'],
+      ['Asesor:', 'Crystal Service'],
+      ['Estado general:', estado === 'PAGADO' ? 'Finalizado' : 'En proceso'],
+    ];
+    doc.setFontSize(8.5);
+    filas.forEach((f, i) => {
+      const y = clY + 15 + i * 5.3;
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(107, 114, 128);
+      doc.text(f[0], colL, y);
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 26, 26);
+      doc.text(String(f[1]), colL + 24, y);
+    });
+    filasR.forEach((f, i) => {
+      const y = clY + 15 + i * 5.3;
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(107, 114, 128);
+      doc.text(f[0], colR, y);
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 26, 26);
+      doc.text(String(f[1]), colR + 30, y);
+    });
+
+    /* ── Tarjetas de totales ── */
+    const stY = clY + clH + 8;
+    const stH = 22;
+    const gap = 4;
+    const stW = (MR - ML - gap * 3) / 4;
+    const tarjetas = [
+      { label: 'TOTAL DEL PROYECTO', valor: fmt(cl.totalFacturado), glyph: '$', color: green },
+      { label: 'TOTAL ABONADO',      valor: fmt(cl.totalAbonado),   glyph: '$', color: [39, 174, 96] },
+      { label: 'SALDO PENDIENTE',    valor: fmt(saldoTotal),        glyph: '$', color: saldoTotal > 0.01 ? [245, 158, 11] : [39, 174, 96] },
+      { label: 'ESTADO',             valor: estado,                 glyph: '',  color: colorEstado, esEstado: true },
+    ];
+    tarjetas.forEach((t, i) => {
+      const x = ML + i * (stW + gap);
+      doc.setFillColor(t.esEstado ? bgEstado[0] : 250, t.esEstado ? bgEstado[1] : 251, t.esEstado ? bgEstado[2] : 250);
+      doc.setDrawColor(...(t.esEstado ? t.color : [230, 235, 232]));
+      doc.roundedRect(x, stY, stW, stH, 3, 3, 'FD');
+      const cx = x + 9, cy = stY + stH / 2;
+      if (t.esEstado) _drawCheckBadge(doc, cx, cy, 4.2, t.color);
+      else _drawIconBadge(doc, cx, cy, 4.2, t.color, t.glyph);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.6);
+      doc.setTextColor(107, 114, 128);
+      doc.text(t.label, x + 16, stY + 8);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5);
+      doc.setTextColor(26, 26, 26);
+      doc.text(String(t.valor), x + 16, stY + 16);
+    });
+
+    /* ── Detalle de proyectos ── */
+    const detY = stY + stH + 10;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-    doc.text('DETALLE DE PROYECTOS', 15, 78);
+    doc.setTextColor(26, 26, 26);
+    doc.text('DETALLE DE PROYECTOS', ML, detY);
 
     if (typeof doc.autoTable === 'function') {
       const rows = cl.cobros.map(c => {
@@ -320,77 +476,149 @@ Router.register('estado-cuenta', async (view) => {
       });
 
       doc.autoTable({
-        startY: 82,
-        head: [['Referencia', 'Descripción', 'Total', 'Abonado', 'Saldo', 'Estado']],
+        startY: detY + 4,
+        head: [['Ref.', 'Descripción', 'Total', 'Abonado', 'Saldo', 'Estado']],
         body: rows,
         foot: [['', 'TOTAL', fmt(cl.totalFacturado), fmt(cl.totalAbonado), fmt(saldoTotal), '']],
         theme: 'striped',
-        headStyles:  { fillColor: [31,122,60], textColor: 255, fontStyle:'bold', fontSize:8 },
+        headStyles:  { fillColor: green, textColor: 255, fontStyle: 'bold', fontSize: 8 },
         bodyStyles:  { fontSize: 8.5 },
-        footStyles:  { fillColor: [244,249,246], textColor: [26,26,26], fontStyle:'bold', fontSize:9 },
+        footStyles:  { fillColor: [230, 244, 236], textColor: [26, 26, 26], fontStyle: 'bold', fontSize: 9 },
         columnStyles: {
-          0: { cellWidth: 25 },
-          1: { cellWidth: 70 },
-          2: { cellWidth: 25, halign:'right' },
-          3: { cellWidth: 25, halign:'right' },
-          4: { cellWidth: 25, halign:'right' },
-          5: { cellWidth: 22, halign:'center' },
+          0: { cellWidth: 22 },
+          1: { cellWidth: 68 },
+          2: { cellWidth: 25, halign: 'right' },
+          3: { cellWidth: 25, halign: 'right' },
+          4: { cellWidth: 25, halign: 'right' },
+          5: { cellWidth: 25.9, halign: 'center' },
         },
-        margin: { left: 15, right: 15 },
+        margin: { left: ML, right: 15 },
       });
     }
 
-    const y1 = doc.lastAutoTable?.finalY || 140;
+    const y1 = doc.lastAutoTable?.finalY || (detY + 40);
 
-    /* Historial de abonos */
+    /* ── Historial de abonos (izq) + Resumen (der) ── */
     const todosLosPagos = [];
     cl.cobros.forEach(c => {
       c.pagosDetalle.forEach(p => todosLosPagos.push({ fecha: p.fecha, monto: p.monto, metodo: p.metodo }));
     });
-    todosLosPagos.sort((a,b)=>a.fecha.localeCompare(b.fecha));
+    todosLosPagos.sort((a, b) => a.fecha.localeCompare(b.fecha));
 
-    if (todosLosPagos.length > 0) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-      doc.text(`ABONOS REALIZADOS — ${cl.nombre.toUpperCase()}`, 15, y1 + 12);
+    const colWidth  = (MR - ML - 8) / 2;
+    const xResumen  = ML + colWidth + 8;
+    const secY      = y1 + 10;
 
-      if (typeof doc.autoTable === 'function') {
-        doc.autoTable({
-          startY: y1 + 16,
-          head: [['Fecha', 'Monto', 'Método de pago']],
-          body: todosLosPagos.map(p => [p.fecha, fmt(p.monto), p.metodo || '—']),
-          foot: [['Total abonado', fmt(cl.totalAbonado), '']],
-          theme: 'grid',
-          headStyles:  { fillColor: [39,174,96], textColor: 255, fontStyle:'bold', fontSize:8 },
-          bodyStyles:  { fontSize: 9 },
-          footStyles:  { fillColor: [220,252,231], textColor:[22,163,74], fontStyle:'bold', fontSize:9 },
-          columnStyles: {
-            0: { cellWidth: 45 },
-            1: { cellWidth: 40, halign:'right' },
-            2: { cellWidth: 60 },
-          },
-          margin: { left: 15, right: 15 },
-        });
-      }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.setTextColor(26, 26, 26);
+    doc.text('HISTORIAL DE ABONOS', ML, secY);
+
+    let abonosFinalY = secY + 4;
+    if (todosLosPagos.length > 0 && typeof doc.autoTable === 'function') {
+      doc.autoTable({
+        startY: secY + 4,
+        head: [['Fecha', 'Método', 'Monto']],
+        body: todosLosPagos.map(p => [p.fecha, p.metodo || '—', fmt(p.monto)]),
+        foot: [['TOTAL ABONADO', '', fmt(cl.totalAbonado)]],
+        theme: 'grid',
+        headStyles:  { fillColor: green, textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
+        bodyStyles:  { fontSize: 8 },
+        footStyles:  { fillColor: [230, 244, 236], textColor: [26, 26, 26], fontStyle: 'bold', fontSize: 8.5 },
+        columnStyles: {
+          0: { cellWidth: colWidth * 0.38 },
+          1: { cellWidth: colWidth * 0.34 },
+          2: { cellWidth: colWidth * 0.28, halign: 'right' },
+        },
+        margin: { left: ML, right: W - ML - colWidth },
+        tableWidth: colWidth,
+      });
+      abonosFinalY = doc.lastAutoTable.finalY;
+    } else {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+      doc.setTextColor(107, 114, 128);
+      doc.text('Aún no se han registrado abonos.', ML, secY + 10);
+      abonosFinalY = secY + 14;
     }
 
-    const y2 = doc.lastAutoTable?.finalY || (y1 + 80);
+    /* Resumen (columna derecha) */
+    const resH = 62;
+    doc.setFillColor(244, 249, 246);
+    doc.setDrawColor(209, 232, 217);
+    doc.roundedRect(xResumen, secY - 5, colWidth, resH, 3, 3, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.setTextColor(26, 26, 26);
+    doc.text('RESUMEN', xResumen + 6, secY + 2);
 
-    /* Saldo final destacado */
-    doc.setFillColor(saldoTotal <= 0.01 ? 220 : 254, saldoTotal <= 0.01 ? 252 : 242, saldoTotal <= 0.01 ? 231 : 199);
-    doc.rect(15, y2 + 8, ancho - 30, 22, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
-    doc.setTextColor(saldoTotal <= 0.01 ? 22 : 217, saldoTotal <= 0.01 ? 163 : 119, saldoTotal <= 0.01 ? 74 : 6);
-    doc.text('SALDO PENDIENTE:', 20, y2 + 22);
-    doc.setFontSize(16);
-    doc.text(fmt(saldoTotal), ancho - 20, y2 + 22, { align: 'right' });
+    doc.setFontSize(8.3);
+    const resumenFilas = [
+      ['Valor contratado', fmt(cl.totalFacturado)],
+      ['Pagos realizados', fmt(cl.totalAbonado)],
+    ];
+    resumenFilas.forEach((f, i) => {
+      const y = secY + 10 + i * 6;
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(107, 114, 128);
+      doc.text(f[0], xResumen + 6, y);
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 26, 26);
+      doc.text(f[1], xResumen + colWidth - 6, y, { align: 'right' });
+    });
+    doc.setDrawColor(209, 232, 217);
+    doc.line(xResumen + 6, secY + 24, xResumen + colWidth - 6, secY + 24);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.3);
+    doc.setTextColor(107, 114, 128);
+    doc.text('Saldo pendiente', xResumen + 6, secY + 30);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+    doc.setTextColor(...(saldoTotal > 0.01 ? [245, 158, 11] : [39, 174, 96]));
+    doc.text(fmt(saldoTotal), xResumen + colWidth - 6, secY + 31, { align: 'right' });
 
-    /* Footer */
-    const pg = doc.internal.pageSize.height;
-    doc.setFillColor(31, 122, 60);
-    doc.rect(0, pg - 14, ancho, 14, 'F');
+    const ringCx = xResumen + 16, ringCy = secY + 46;
+    _drawRing(doc, ringCx, ringCy, 9, pctPagado, [39, 174, 96], [225, 235, 229], 2.6);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+    doc.setTextColor(26, 26, 26);
+    doc.text(`${Math.round(pctPagado)}%`, ringCx, ringCy + 1.4, { align: 'center' });
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.8);
+    doc.setTextColor(...(estado === 'PAGADO' ? [39, 174, 96] : [26, 26, 26]));
+    const msg = estado === 'PAGADO'
+      ? 'El proyecto ha sido cancelado en su totalidad.'
+      : 'Aún queda un saldo por completar.';
+    doc.text(doc.splitTextToSize(msg, colWidth - 34), ringCx + 13, secY + 42);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+    doc.setTextColor(...colorEstado);
+    doc.text(estado, ringCx + 13, secY + 51);
+
+    /* ── Observaciones ── */
+    const obsY = abonosFinalY + 8;
+    const obsH = 24;
+    doc.setFillColor(244, 249, 246);
+    doc.setDrawColor(209, 232, 217);
+    doc.roundedRect(ML, obsY, colWidth, obsH, 3, 3, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    doc.setTextColor(26, 26, 26);
+    doc.text('OBSERVACIONES', ML + 6, obsY + 7);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+    doc.setTextColor(80, 80, 80);
+    const observaciones = [
+      'Documento generado automáticamente.',
+      'Si tiene alguna consulta puede comunicarse con nuestro departamento administrativo.',
+      'Gracias por confiar en Crystal Service.',
+    ];
+    let obsLineY = obsY + 12;
+    observaciones.forEach(o => {
+      const lines = doc.splitTextToSize(`•  ${o}`, colWidth - 12);
+      doc.text(lines, ML + 6, obsLineY);
+      obsLineY += lines.length * 3.6;
+    });
+
+    /* ── Footer ── */
+    doc.setFillColor(...green);
+    doc.rect(0, H - 16, W, 12, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
-    doc.text('Crystal Services Panamá — Este documento es un estado de cuenta interno.', ancho/2, pg - 6, { align: 'center' });
+    doc.text('Tel: 6456-2658    •    crystalservicejj@gmail.com    •    San Miguelito, Ciudad de Panamá', W / 2, H - 10, { align: 'center' });
+    doc.setFillColor(20, 92, 46);
+    doc.rect(0, H - 4, W, 4, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
+    doc.text('ALUMINIO  •  VIDRIO  •  MANTENIMIENTO', W / 2, H - 1.3, { align: 'center' });
 
     doc.save(`Estado_Cuenta_${cl.nombre.replace(/\s+/g,'_')}.pdf`);
     UI.toast('Estado de cuenta PDF generado', 'success');
