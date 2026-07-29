@@ -211,6 +211,11 @@ Router.register('nueva-cotizacion', async (view, params) => {
   let tipoCotizacion = editando?.tipoCotizacion || 'Estandar';
   let configCols = editando?.configCols || { foto: true, ancho: true, alto: true, unidad: true, m2: true, cantidad: true };
 
+  // Precio global: varios ítems cotizados en conjunto con un solo total, sin
+  // desglosar precio por unidad (ej. 3 puertas por $450 en total, sin decir c/u).
+  let precioGlobal = editando?.precioGlobal || false;
+  let totalGlobalManual = editando?.totalGlobal || 0;
+
   // Estado/abono actuales disponibles para generarPDFCotizacion() al usar "Generar PDF" desde el formulario
   window._estadoPDF     = editando?.estado || 'Enviada';
   window._montoAbonoPDF = editando?.montoAbono || 0;
@@ -234,6 +239,7 @@ Router.register('nueva-cotizacion', async (view, params) => {
   }
 
   function totalSubtotal() {
+    if (precioGlobal) return parseFloat(totalGlobalManual) || 0;
     return lineas.reduce((s, l) => s + (parseFloat(l.total)||0), 0);
   }
 
@@ -294,13 +300,16 @@ Router.register('nueva-cotizacion', async (view, params) => {
              </td>` : ''}
           ${configCols.m2 ? `<td>${esM2 ? `<div class="auto-field">${l.m2||'—'}</div>` : '—'}</td>` : ''}
           ${configCols.cantidad ? `<td><input type="number" min="1" value="${l.cantidad||1}" onchange="window._lineaChange(${i},'cantidad',this.value)" style="max-width:60px;"></td>` : ''}
+          ${precioGlobal ? `
+          <td><div class="auto-field" style="opacity:.55;text-align:center;">—</div></td>
+          <td><div class="auto-field" style="opacity:.55;text-align:center;">—</div></td>` : `
           <td><input type="number" min="0" step="0.01" value="${l.precio||0}" onchange="window._lineaChange(${i},'precio',this.value)" style="max-width:90px;" title="Precio unitario — no afecta el total si ya lo colocaste a mano"></td>
           <td>
             <div style="display:flex;align-items:center;gap:4px;">
               <input type="number" min="0" step="0.01" value="${l.total||0}" onchange="window._lineaChange(${i},'total',this.value)" style="max-width:90px;${l.totalManual?'border-color:var(--green-mid);background:#f0fdf4;':''}" title="Total de la línea — puedes colocarlo directo si el jefe ya te da el precio final">
               ${l.totalManual ? `<button type="button" class="btn btn-ghost btn-sm" onclick="window._recalcularTotal(${i})" title="Volver a calcular el total desde precio × m² × cantidad" style="padding:2px 6px;font-size:11px;">↺</button>` : ''}
             </div>
-          </td>
+          </td>`}
           <td>
             <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="window._removeLinea(${i})">${UI.icons.trash}</button>
           </td>
@@ -345,6 +354,24 @@ Router.register('nueva-cotizacion', async (view, params) => {
     window._configColsPDF = configCols;
     window._lineasPDF = lineas;
   }
+
+  window._togglePrecioGlobal = (checked) => {
+    precioGlobal = checked;
+    const grp = document.getElementById('total-global-group');
+    if (grp) grp.style.display = checked ? 'block' : 'none';
+    if (checked && !totalGlobalManual) {
+      const sumaActual = lineas.reduce((s, l) => s + (parseFloat(l.total)||0), 0);
+      totalGlobalManual = sumaActual || 0;
+      const inp = document.getElementById('total-global-input');
+      if (inp) inp.value = totalGlobalManual || '';
+    }
+    renderLineas();
+  };
+
+  window._setTotalGlobal = (val) => {
+    totalGlobalManual = parseFloat(val) || 0;
+    refreshTotals();
+  };
 
   window._toggleRUC = (tipo) => {
     const grupo = document.getElementById('ruc-group');
@@ -484,6 +511,8 @@ Router.register('nueva-cotizacion', async (view, params) => {
       aplicaITBMS:   totales.aplicaITBMS,
       tipoCotizacion,
       configCols,
+      precioGlobal,
+      totalGlobal: precioGlobal ? totalGlobalManual : undefined,
       // No degradar un estado más avanzado (Abonado/Pagado/Completado/Factura) solo por
       // editar el contenido de la cotización; el cambio de estado se hace desde "Ver cotización".
       estado: (editando && ['Abonado','Pagado'].includes(editando.estado))
@@ -608,6 +637,16 @@ Router.register('nueva-cotizacion', async (view, params) => {
               <label style="font-size:13px;cursor:pointer;"><input type="checkbox" ${configCols.cantidad?'checked':''} onchange="window._toggleCol('cantidad',this.checked)"> Cantidad</label>
             </div>
           </div>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;margin-bottom:16px;background:var(--bg-body);padding:10px 12px;border-radius:8px;border:1px solid var(--border);">
+          <input type="checkbox" id="chk-precio-global" ${precioGlobal?'checked':''} onchange="window._togglePrecioGlobal(this.checked)">
+          Precio global — un solo total para todos los ítems, sin desglosar precio por unidad
+        </label>
+
+        <div id="total-global-group" class="form-group" style="display:${precioGlobal?'block':'none'};">
+          <label class="form-label">Total combinado de todos los ítems</label>
+          <input type="number" min="0" step="0.01" id="total-global-input" class="form-input" placeholder="Ej: 450.00" value="${totalGlobalManual||''}" onchange="window._setTotalGlobal(this.value)">
         </div>
 
         <div class="card-title" style="margin-bottom:4px;">Detalle del Trabajo</div>
@@ -866,12 +905,13 @@ Router.register('ver-cotizacion', async (view, params) => {
             ${(c.lineas||[]).map(l => `<tr>
               <td>${l.producto||l.descripcion||'—'}</td>
               <td>${l.m2 !== '—' && l.m2 ? l.m2 : (l.cantidad||1)}</td>
-              <td>${fmt(l.precio||0)}</td>
-              <td style="font-weight:600;">${fmt(l.total||0)}</td>
+              <td>${c.precioGlobal ? '—' : fmt(l.precio||0)}</td>
+              <td style="font-weight:600;">${c.precioGlobal ? '—' : fmt(l.total||0)}</td>
             </tr>`).join('')}
           </tbody>
         </table>
       </div>
+      ${c.precioGlobal ? `<p style="color:var(--text-gray);font-size:12px;margin-top:8px;">Precio global: estos ítems se cotizaron en conjunto, sin desglosar precio por unidad.</p>` : ''}
       <div style="display:flex;justify-content:flex-end;margin-top:16px;">
         <div class="total-box" style="min-width:300px;">
           <div class="total-row"><span>Subtotal</span><span>${fmt(c.subtotal||0)}</span></div>
@@ -1358,7 +1398,7 @@ async function generarPDFCotizacion(id, fromForm = false) {
     if (config.unidad) row.push(l.unidad || '—');
     // No incluir la celda de m2 ni precio unitario en las filas
     if (config.cantidad) row.push(l.cantidad || 1);
-    row.push(fmtPDF(l.total  || 0));
+    row.push(c.precioGlobal ? '—' : fmtPDF(l.total || 0));
     return row;
   });
 
