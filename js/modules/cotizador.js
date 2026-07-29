@@ -47,7 +47,7 @@ Router.register('cotizaciones', async (view) => {
       const abonoInfo = abonoInfoLinea(c);
       return `
       <tr onclick="Router.go('ver-cotizacion',{id:'${c.id}'})" style="cursor:pointer;">
-        <td><strong>#${c.numero}</strong></td>
+        <td><strong>${c.esFactura ? (c.numeroFactura||'#'+c.numero) : '#'+c.numero}</strong>${c.esFactura ? '<div style="font-size:10px;color:var(--green-mid);font-weight:600;">FACTURA</div>' : ''}</td>
         <td>${c.clienteNombre||'—'}<br><span style="color:var(--text-gray);font-size:11px;">${c.clienteTel||''}</span></td>
         <td>
           <strong>${fmt(c.total||0)}</strong>
@@ -73,7 +73,7 @@ Router.register('cotizaciones', async (view) => {
         return `
         <div class="cotiz-card" onclick="Router.go('ver-cotizacion',{id:'${c.id}'})">
           <div class="cotiz-card-top">
-            <div class="cotiz-card-num">#${c.numero}</div>
+            <div class="cotiz-card-num">${c.esFactura ? (c.numeroFactura||'#'+c.numero) : '#'+c.numero}${c.esFactura ? ' <span style="font-size:10px;color:var(--green-mid);font-weight:600;">FACTURA</span>' : ''}</div>
             ${estadoBadge(c.estado)}
           </div>
           <div class="cotiz-card-cliente">${c.clienteNombre||'—'}</div>
@@ -112,6 +112,9 @@ Router.register('cotizaciones', async (view) => {
         <div class="page-subtitle">${cotizaciones.length} cotizaciones registradas</div>
       </div>
       <div class="page-actions">
+        <button class="btn btn-outline" onclick="Router.go('nueva-cotizacion',{factura:'1'})">
+          ${UI.icons.plus} Nueva factura
+        </button>
         <button class="btn btn-primary" onclick="Router.go('nueva-cotizacion')">
           ${UI.icons.plus} Nueva cotización
         </button>
@@ -216,9 +219,15 @@ Router.register('nueva-cotizacion', async (view, params) => {
   let precioGlobal = editando?.precioGlobal || false;
   let totalGlobalManual = editando?.totalGlobal || 0;
 
+  // Factura directa: se factura sin pasar por el flujo de cotización/aprobación
+  // (ej. trabajos pequeños que se cobran de una vez, sin cotizar antes).
+  const esFactura = editando ? !!editando.esFactura : (params.factura === '1');
+  let numeroFacturaManual = editando?.numeroFactura || ('F-' + numero);
+
   // Estado/abono actuales disponibles para generarPDFCotizacion() al usar "Generar PDF" desde el formulario
   window._estadoPDF     = editando?.estado || 'Enviada';
   window._montoAbonoPDF = editando?.montoAbono || 0;
+  window._esFacturaPDF  = editando ? !!editando.esFactura : (params.factura === '1');
 
   // linea: { tipo: 'producto'|'manual', producto, descripcion, ancho, alto, m2, precio, total, unidad, cantidad, foto }
   let lineas = editando?.lineas || [{ tipo:'producto', producto:'', descripcion:'', ancho:'', alto:'', m2:'', precio:'', total:'', cantidad:1, foto:'' }];
@@ -517,6 +526,9 @@ Router.register('nueva-cotizacion', async (view, params) => {
       configCols,
       precioGlobal,
       totalGlobal: precioGlobal ? totalGlobalManual : undefined,
+      esFactura,
+      numeroFactura: esFactura ? (document.getElementById('numeroFactura')?.value.trim() || numeroFacturaManual) : editando?.numeroFactura,
+      fechaFactura:  esFactura ? (editando?.fechaFactura || new Date().toISOString().slice(0,10)) : editando?.fechaFactura,
       // No degradar un estado más avanzado (Abonado/Pagado/Completado/Factura) solo por
       // editar el contenido de la cotización; el cambio de estado se hace desde "Ver cotización".
       estado: (editando && ['Abonado','Pagado'].includes(editando.estado))
@@ -524,12 +536,42 @@ Router.register('nueva-cotizacion', async (view, params) => {
         : estado,
     };
     if (!data.clienteNombre) { UI.toast('El nombre del cliente es requerido', 'error'); return; }
+    if (esFactura && !data.numeroFactura) { UI.toast('Escribe el número de factura', 'error'); return; }
     const saved = await DB.saveCotizacion(data);
-    UI.toast(estado === 'Borrador' ? 'Borrador guardado' : 'Cotización #' + numero + ' guardada', 'success');
+    if (esFactura) await _syncCobroFacturaDirecta(saved, data.numeroFactura);
+    UI.toast(esFactura ? `Factura ${data.numeroFactura} guardada` : (estado === 'Borrador' ? 'Borrador guardado' : 'Cotización #' + numero + ' guardada'), 'success');
     if (emitirPDF) {
       await generarPDFCotizacion(saved.id);
     }
     Router.go('cotizaciones');
+  }
+
+  async function _syncCobroFacturaDirecta(cot, numeroFactura) {
+    const cobros = await DB.getCobros();
+    let cobro = cobros.find(cb => cb.cotizacionId === cot.id);
+    const pagado = cot.montoAbono || 0;
+    const saldo  = (cot.total || 0) - pagado;
+    if (!cobro) {
+      await DB.saveCobro({
+        cotizacionId:  cot.id,
+        numero:        cot.numero,
+        factura:       numeroFactura,
+        clienteNombre: cot.clienteNombre,
+        telefono:      cot.clienteTel || '',
+        notas:         `Factura ${numeroFactura}`,
+        total:         cot.total || 0,
+        pagado:        pagado,
+        saldo:         saldo,
+        estado:        pagado >= (cot.total||0) - 0.01 ? 'Pagado' : (pagado > 0 ? 'Parcial' : 'Pendiente'),
+        fecha:         cot.fecha,
+        vencimiento:   '',
+      });
+    } else {
+      cobro.factura = numeroFactura;
+      cobro.total    = cot.total || 0;
+      cobro.saldo    = saldo;
+      await DB.saveCobro(cobro);
+    }
   }
 
   const today = new Date().toISOString().slice(0,10);
@@ -537,13 +579,13 @@ Router.register('nueva-cotizacion', async (view, params) => {
   view.innerHTML = `
     <div class="page-header">
       <div>
-        <div class="page-title">${editando ? 'Editar' : 'Nueva'} Cotización #${numero}</div>
+        <div class="page-title">${editando ? 'Editar' : 'Nueva'} ${esFactura ? 'Factura' : 'Cotización'} #${numero}</div>
         <div class="page-subtitle">${today}</div>
       </div>
       <div class="page-actions">
         <button class="btn btn-outline" onclick="window.guardar('Borrador')">Guardar borrador</button>
         <button class="btn btn-secondary" onclick="generarPDFCotizacion(null, true)" id="btn-pdf">${UI.icons.pdf} Generar PDF</button>
-        <button class="btn btn-primary" onclick="window.guardar('Enviada', true)">${UI.icons.check} Guardar y emitir</button>
+        <button class="btn btn-primary" onclick="window.guardar('Enviada', true)">${UI.icons.check} ${esFactura ? 'Guardar y facturar' : 'Guardar y emitir'}</button>
         ${editando ? `<button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger);" onclick="window._deleteCotizacion(${editando.id})">${UI.icons.trash} Eliminar</button>` : ''}
       </div>
     </div>
@@ -584,6 +626,11 @@ Router.register('nueva-cotizacion', async (view, params) => {
       <!-- Datos del cliente -->
       <div class="card">
         <div class="card-title" style="margin-bottom:16px;">Datos del Cliente</div>
+        ${esFactura ? `
+        <div class="form-group">
+          <label class="form-label">Número de factura <span class="required">*</span></label>
+          <input id="numeroFactura" class="form-input" placeholder="F-1806" value="${numeroFacturaManual}">
+        </div>` : ''}
         <div class="form-group">
           <label class="form-label">Nombre completo <span class="required">*</span></label>
           <input id="clienteNombre" class="form-input" placeholder="Nombre del cliente" value="${editando?.clienteNombre||''}">
@@ -833,13 +880,13 @@ Router.register('ver-cotizacion', async (view, params) => {
   const abonoAcum = c.montoAbono || 0;
   const saldoPend = (c.total||0) - abonoAcum;
   const pagadoTotal = abonoAcum > 0 && saldoPend <= 0.01;
-  const puedeFacturar = ['Aprobada','Abonado','Pagado'].includes(c.estado);
+  const puedeFacturar = !c.esFactura && ['Aprobada','Abonado','Pagado'].includes(c.estado);
 
   view.innerHTML = `
     <div class="page-header">
       <div>
         <button class="btn btn-ghost" onclick="Router.go('cotizaciones')">${UI.icons.arrowLeft} Volver</button>
-        <div class="page-title" style="margin-top:8px;">Cotización #${c.numero}</div>
+        <div class="page-title" style="margin-top:8px;">${c.esFactura ? `Factura ${c.numeroFactura||''}` : `Cotización #${c.numero}`}</div>
         <div class="page-subtitle">${c.clienteNombre} — ${c.fecha||'—'}</div>
       </div>
       <div class="page-actions">
@@ -1240,6 +1287,8 @@ async function generarPDFCotizacion(id, fromForm = false) {
       lineas: window._lineasPDF || [],
       estado: window._estadoPDF || 'Enviada',
       montoAbono: window._montoAbonoPDF || 0,
+      esFactura: window._esFacturaPDF || false,
+      numeroFactura: document.getElementById('numeroFactura')?.value || '',
     };
   } else {
     c = await DB.getCotizacion(id);
@@ -1270,6 +1319,7 @@ async function generarPDFCotizacion(id, fromForm = false) {
   }
 
   const estadoPDF = c.estado || 'Enviada';
+  const esFacturaPDF = !!(c.esFactura || c.numeroFactura);
   const montoAbonoPDF = c.montoAbono || 0;
   const saldoPendientePDF = Math.max((c.total || 0) - montoAbonoPDF, 0);
 
@@ -1312,7 +1362,7 @@ async function generarPDFCotizacion(id, fromForm = false) {
 
   doc.autoTable({
     startY: fechaY - 6,
-    body: [['Cotización No.', c.numero || '0000'], ['Fecha', fDisp]],
+    body: [[esFacturaPDF ? 'Factura No.' : 'Cotización No.', (esFacturaPDF ? c.numeroFactura : c.numero) || '0000'], ['Fecha', fDisp]],
     theme: 'grid',
     tableWidth: 40,
     margin: { left: MR - 40 },
@@ -1329,8 +1379,9 @@ async function generarPDFCotizacion(id, fromForm = false) {
     }
   });
 
-  // Título Izquierda — refleja el estado real de la cotización
-  const tituloPDF = estadoPDF === 'Pagado' ? 'PAGADO' : estadoPDF === 'Cancelada' ? 'CANCELADA' : (estadoPDF === 'Abonado' ? 'ABONADO' : 'COTIZACION');
+  // Título Izquierda — refleja el estado real de la cotización/factura
+  const tituloBase = esFacturaPDF ? 'FACTURA' : 'COTIZACION';
+  const tituloPDF = estadoPDF === 'Pagado' ? 'PAGADO' : estadoPDF === 'Cancelada' ? 'CANCELADA' : (estadoPDF === 'Abonado' ? 'ABONADO' : tituloBase);
   const colorTitulo = estadoPDF === 'Pagado' ? [34, 197, 94] : estadoPDF === 'Cancelada' ? [239, 68, 68] : (estadoPDF === 'Abonado' ? [245, 158, 11] : tealTitle);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
