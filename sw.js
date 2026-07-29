@@ -1,4 +1,4 @@
-const CACHE_NAME = 'crystal-os-v2';
+const CACHE_NAME = 'crystal-os-v3';
 const ASSETS = [
   '/',
   '/index.html',
@@ -33,7 +33,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    fetch(e.request).then(res => {
+    fetch(e.request, { cache: 'no-store' }).then(res => {
       const resClone = res.clone();
       caches.open(CACHE_NAME).then(cache => {
         if (!e.request.url.includes('chrome-extension')) cache.put(e.request, resClone);
