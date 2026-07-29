@@ -520,6 +520,7 @@ Router.register('nueva-cotizacion', async (view, params) => {
       subtotal:      totales.sub,
       itbms:         totales.imp,
       total:         totales.total,
+      abono60:       totales.abono60,
       saldo40:       totales.saldo40,
       aplicaITBMS:   totales.aplicaITBMS,
       tipoCotizacion,
@@ -1580,7 +1581,9 @@ async function generarPDFCotizacion(id, fromForm = false) {
         data.cell.styles.textColor = [255, 255, 255];
         data.cell.styles.fontStyle = 'bold';
       } else if (typeof label === 'string' && label.startsWith('RESTANTE')) {
-        data.cell.styles.textColor = [245, 158, 11];
+        // Antes de que el cliente abone, 60% y 40% van en el mismo verde —
+        // recién cuando abona se resalta en ámbar cuánto le falta (fila ABONADO/SALDO PENDIENTE de arriba).
+        data.cell.styles.textColor = greenHeader;
         data.cell.styles.fontStyle = 'bold';
       }
     }
@@ -1620,7 +1623,16 @@ async function generarPDFCotizacion(id, fromForm = false) {
   // Alto de la caja calculado según el contenido real, para que nada quede cortado
   const contactLineas = 4; // Crystal Service / teléfono / email / sitio web
   const boxHeight = Math.max(40, 9 + (lineasCondiciones.length * 3.5) + 4 + (contactLineas * 4) + 4);
-  const by = Math.max(ty + 10, 210);
+  let by = Math.max(ty + 10, 210);
+
+  // Si la cotización trae muchos ítems, la tabla empuja todo hacia abajo y esta
+  // caja de condiciones/métodos de pago ya no cabe en la página — se pasa a una
+  // página nueva en vez de dejarla cortada.
+  const marginInferior = 15;
+  if (by + boxHeight > H - marginInferior) {
+    doc.addPage();
+    by = 20;
+  }
 
   // Dibuja el marco general de info inferior
   doc.setDrawColor(0, 0, 0);
