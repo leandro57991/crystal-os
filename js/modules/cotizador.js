@@ -5,6 +5,12 @@
 
 /* ── LISTA DE COTIZACIONES ─────────────────────────────── */
 
+// El TOTAL de la cotización se muestra redondeado y sin centavos (más fácil de leer
+// y de cobrar); subtotal, ITBMS, abono y saldo mantienen los decimales normales.
+function fmtTotal(n) {
+  return '$' + Math.round(n||0).toLocaleString('en-US');
+}
+
 Router.register('cotizaciones', async (view) => {
   let cotizaciones = await DB.getCotizaciones();
   let filtroEstado = 'Todos';
@@ -50,7 +56,7 @@ Router.register('cotizaciones', async (view) => {
         <td><strong>${c.esFactura ? (c.numeroFactura||'#'+c.numero) : '#'+c.numero}</strong>${c.esFactura ? '<div style="font-size:10px;color:var(--green-mid);font-weight:600;">FACTURA</div>' : ''}</td>
         <td>${c.clienteNombre||'—'}<br><span style="color:var(--text-gray);font-size:11px;">${c.clienteTel||''}</span></td>
         <td>
-          <strong>${fmt(c.total||0)}</strong>
+          <strong>${fmtTotal(c.total||0)}</strong>
           ${c.abono60 > 0 ? `<div style="font-size:11px;color:var(--green-mid);">60%: ${fmt(c.abono60)}</div>` : ''}
         </td>
         <td>${estadoBadge(c.estado)}${abonoInfo}</td>
@@ -79,7 +85,7 @@ Router.register('cotizaciones', async (view) => {
           <div class="cotiz-card-cliente">${c.clienteNombre||'—'}</div>
           ${c.clienteTel ? `<div class="cotiz-card-tel">${c.clienteTel}</div>` : ''}
           <div class="cotiz-card-row">
-            <div class="cotiz-card-total">${fmt(c.total||0)}</div>
+            <div class="cotiz-card-total">${fmtTotal(c.total||0)}</div>
             <div class="cotiz-card-fecha">${c.fecha||'—'}</div>
           </div>
           ${c.abono60 > 0 ? `<div class="cotiz-card-abono">60%: ${fmt(c.abono60)}</div>` : ''}
@@ -262,8 +268,9 @@ Router.register('nueva-cotizacion', async (view, params) => {
       ${configCols.alto ? '<th>Alto</th>' : ''}
       ${configCols.unidad ? '<th>Unidad</th>' : ''}
       ${configCols.m2 ? '<th>m²</th>' : ''}
+      <th>Precio</th>
       ${configCols.cantidad ? '<th>Cant.</th>' : ''}
-      <th>Precio</th><th>Total</th><th></th>
+      <th>Total</th><th></th>
     </tr>`;
   }
 
@@ -308,12 +315,13 @@ Router.register('nueva-cotizacion', async (view, params) => {
                </select>
              </td>` : ''}
           ${configCols.m2 ? `<td>${esM2 ? `<div class="auto-field">${l.m2||'—'}</div>` : '—'}</td>` : ''}
+          ${precioGlobal
+            ? `<td><div class="auto-field" style="opacity:.55;text-align:center;">—</div></td>`
+            : `<td><input type="number" min="0" step="0.01" value="${l.precio||0}" onchange="window._lineaChange(${i},'precio',this.value)" style="max-width:90px;" title="Precio unitario — no afecta el total si ya lo colocaste a mano"></td>`}
           ${configCols.cantidad ? `<td><input type="number" min="1" value="${l.cantidad||1}" onchange="window._lineaChange(${i},'cantidad',this.value)" style="max-width:60px;"></td>` : ''}
-          ${precioGlobal ? `
-          <td><div class="auto-field" style="opacity:.55;text-align:center;">—</div></td>
-          <td><div class="auto-field" style="opacity:.55;text-align:center;">—</div></td>` : `
-          <td><input type="number" min="0" step="0.01" value="${l.precio||0}" onchange="window._lineaChange(${i},'precio',this.value)" style="max-width:90px;" title="Precio unitario — no afecta el total si ya lo colocaste a mano"></td>
-          <td>
+          ${precioGlobal
+            ? `<td><div class="auto-field" style="opacity:.55;text-align:center;">—</div></td>`
+            : `<td>
             <div style="display:flex;align-items:center;gap:4px;">
               <input type="number" min="0" step="0.01" value="${l.total||0}" onchange="window._lineaChange(${i},'total',this.value)" style="max-width:90px;${l.totalManual?'border-color:var(--green-mid);background:#f0fdf4;':''}" title="Total de la línea — puedes colocarlo directo si el jefe ya te da el precio final">
               ${l.totalManual ? `<button type="button" class="btn btn-ghost btn-sm" onclick="window._recalcularTotal(${i})" title="Volver a calcular el total desde precio × m² × cantidad" style="padding:2px 6px;font-size:11px;">↺</button>` : ''}
@@ -336,8 +344,8 @@ Router.register('nueva-cotizacion', async (view, params) => {
     const sub      = totalSubtotal();
     const aplicaITBMS = document.getElementById('chk-itbms')?.checked !== false;
     const imp      = aplicaITBMS ? (sub * itbms) : 0;
-    const total    = sub + imp;
-    
+    const total    = Math.round(sub + imp); // total redondeado, sin centavos
+
     let abono60 = 0, saldo40 = total;
     if (tipoCotizacion === 'Estandar') { abono60 = total * 0.6; saldo40 = total * 0.4; }
     else if (tipoCotizacion === 'Smart Glass') { abono60 = total * 0.8; saldo40 = total * 0.2; }
@@ -347,7 +355,7 @@ Router.register('nueva-cotizacion', async (view, params) => {
     if (el('sub-val'))    el('sub-val').textContent    = fmt(sub);
     if (el('itbms-row'))  el('itbms-row').style.display = aplicaITBMS ? '' : 'none';
     if (el('itbms-val'))  el('itbms-val').textContent  = fmt(imp);
-    if (el('total-val'))  el('total-val').textContent  = fmt(total);
+    if (el('total-val'))  el('total-val').textContent  = fmtTotal(total);
     if (el('abono60-val'))el('abono60-val').textContent= fmt(abono60);
     if (el('saldo40-val'))el('saldo40-val').textContent= fmt(saldo40);
 
@@ -939,7 +947,7 @@ Router.register('ver-cotizacion', async (view, params) => {
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;">
-        <div><div style="font-size:12px;color:var(--text-gray);">Total cotización</div><div style="font-size:18px;font-weight:700;">${fmt(c.total||0)}</div></div>
+        <div><div style="font-size:12px;color:var(--text-gray);">Total cotización</div><div style="font-size:18px;font-weight:700;">${fmtTotal(c.total||0)}</div></div>
         <div><div style="font-size:12px;color:var(--text-gray);">${pagadoTotal ? 'Pagado' : 'Abonado'}</div><div style="font-size:18px;font-weight:700;color:var(--success);">${fmt(abonoAcum)}</div></div>
         ${pagadoTotal
           ? `<div><div style="font-size:12px;color:var(--text-gray);">Saldo</div><div style="font-size:18px;font-weight:700;color:var(--success);">$0.00</div></div>`
@@ -983,7 +991,7 @@ Router.register('ver-cotizacion', async (view, params) => {
           ${c.aplicaITBMS !== false && c.itbms > 0
             ? `<div class="total-row"><span>ITBMS (7%)</span><span>${fmt(c.itbms||0)}</span></div>`
             : `<div class="total-row" style="color:var(--text-gray);font-size:12px;"><span>ITBMS</span><span>No aplica</span></div>`}
-          <div class="total-row grand"><span>TOTAL</span><span>${fmt(c.total||0)}</span></div>
+          <div class="total-row grand"><span>TOTAL</span><span>${fmtTotal(c.total||0)}</span></div>
           ${c.abono60 > 0 ? `
           <div style="border-top:2px dashed var(--border);margin:10px 0;"></div>
           <div style="font-size:11px;color:var(--text-gray);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Forma de pago</div>
@@ -1038,7 +1046,7 @@ Router.register('ver-cotizacion', async (view, params) => {
           <button class="modal-close" onclick="document.getElementById('modal-abono').style.display='none'">${UI.icons.x}</button>
         </div>
         <div class="modal-body">
-          <p style="color:var(--text-gray);margin-bottom:16px;">Total de la cotización: <strong>${fmt(c.total||0)}</strong></p>
+          <p style="color:var(--text-gray);margin-bottom:16px;">Total de la cotización: <strong>${fmtTotal(c.total||0)}</strong></p>
           <div class="form-group">
             <label class="form-label">Monto del abono ($) <span class="required">*</span></label>
             <input id="monto-abono" class="form-input" type="number" min="1" step="0.01" placeholder="0.00" value="${abonoAcum||''}">
@@ -1353,6 +1361,11 @@ async function generarPDFCotizacion(id, fromForm = false) {
   function fmtPDF(n) {
     return 'B/.' + Number(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  // El TOTAL va redondeado y sin centavos (igual que en pantalla); el resto de filas
+  // (subtotal, ITBMS, abonado, saldo) mantiene los decimales normales.
+  function fmtTotalPDF(n) {
+    return 'B/.' + Math.round(n||0).toLocaleString('en-US');
+  }
 
   // Colores principales — mismo verde de marca en todo el documento
   const greenHeader = [31, 122, 60]; // #1F7A3C verde principal Crystal Services
@@ -1540,7 +1553,7 @@ async function generarPDFCotizacion(id, fromForm = false) {
     totalRows.push(['ITBMS (7%)', fmtPDF(c.itbms||0)]);
   }
   totalRows.push(['TRANSPORTE', '—']);
-  totalRows.push(['TOTAL', fmtPDF(c.total||0)]);
+  totalRows.push(['TOTAL', fmtTotalPDF(c.total||0)]);
 
   if (estadoPDF === 'Pagado') {
     // Pagado en su totalidad — no queda saldo
@@ -1738,7 +1751,7 @@ async function enviarWhatsApp(id) {
   const tel = (c.clienteTel||'').replace(/[^0-9]/g,'');
   const msg = encodeURIComponent(
     `Hola ${c.clienteNombre}, le saluda Crystal Services Panamá.\n\n` +
-    `Le enviamos la cotización #${c.numero} por un monto de ${fmt(c.total)}.\n\n` +
+    `Le enviamos la cotización #${c.numero} por un monto de ${fmtTotal(c.total)}.\n\n` +
     `Quedamos atentos a sus comentarios.\n\n` +
     `Crystal Services — Tel: 6456-2658`
   );
