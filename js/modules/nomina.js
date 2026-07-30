@@ -222,13 +222,6 @@ Router.register('nomina', async (view) => {
     const asistMap = {};
     asistHoy.forEach(a => asistMap[a.trabajadorId] = a);
 
-    // Minutos de tardanza acumulados en la quincena vigente (para saber si ya se
-    // sobrepasan los 30 min y toca descuento — la regla es por período, no por día).
-    const { desde: qDesde, hasta: qHasta } = calcQuincena(fechaActual);
-    const asistQuincena = await DB.getAsistenciaByRango(qDesde, qHasta);
-    const acumTard = {};
-    asistQuincena.forEach(a => { acumTard[a.trabajadorId] = (acumTard[a.trabajadorId]||0) + (parseInt(a.tardanza)||0); });
-
     const fecha = new Date(fechaActual + 'T12:00:00');
     const labelFecha = fecha.toLocaleDateString('es-PA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
     const esHoy = fechaActual === todayISO;
@@ -256,7 +249,6 @@ Router.register('nomina', async (view) => {
               ${trabajadores.map(t => {
                 const a = asistMap[t.id] || {};
                 const ausente = a.id ? !!a.ausente : false;
-                const tardMin = a.id ? (parseInt(a.tardanza)||0) : calcTardanza(a.entrada||'08:00');
                 return `
                   <tr>
                     <td><strong>${t.nombre}</strong></td>
@@ -275,8 +267,6 @@ Router.register('nomina', async (view) => {
                     <td><input type="number" id="hE-${t.id}" class="form-input" style="width:60px;" min="0" step="0.5" placeholder="0" value="${ausente?0:(a.horasExtras||0)}" ${ausente?'disabled':''}></td>
                     <td>
                       <input type="number" id="tar-${t.id}" class="form-input" style="width:60px;" min="0" value="${ausente?0:(a.tardanza||0)}" ${ausente?'disabled':''}>
-                      ${!ausente && tardMin > 0 ? `<div style="font-size:11px;color:var(--amber);">${tardMin} min hoy</div>` : ''}
-                      ${!ausente && acumTard[t.id] > 30 ? `<div style="font-size:11px;color:var(--danger);">${acumTard[t.id]} min en la quincena — descuento ${fmt(calcDeduccionTardanza(acumTard[t.id]))}</div>` : (!ausente && acumTard[t.id] > 0 ? `<div style="font-size:11px;color:var(--text-gray);">${acumTard[t.id]} min acumulados en la quincena</div>` : '')}
                     </td>
                     <td><label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" id="alm-${t.id}" ${a.almuerzo?'checked':''} ${ausente?'disabled':''}> Sí</label></td>
                     <td><input type="number" id="vale-${t.id}" class="form-input" style="width:70px;" min="0" step="0.01" value="${a.vale||0}" placeholder="0.00"></td>
