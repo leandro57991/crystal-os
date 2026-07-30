@@ -26,9 +26,12 @@ Router.register('nomina', async (view) => {
   }
 
   // Descuento por tardanza: se suman TODOS los minutos de tardanza del período
-  // (quincena/semana) y si el total sobrepasa 30 minutos, se descuenta $5 una sola vez.
+  // (quincena/semana); si el total no pasa de 30 min no se descuenta nada, y a
+  // partir de ahí se descuentan $5 por cada 45 min acumulados (proporcional,
+  // no por bloques fijos) — ej. 265 min ÷ 45 × $5 = $29.44.
   function calcDeduccionTardanza(minutosTotal) {
-    return minutosTotal > 30 ? 5.00 : 0;
+    if (minutosTotal <= 30) return 0;
+    return (minutosTotal / 45) * 5;
   }
 
   view.innerHTML = `
@@ -273,7 +276,7 @@ Router.register('nomina', async (view) => {
                     <td>
                       <input type="number" id="tar-${t.id}" class="form-input" style="width:60px;" min="0" value="${ausente?0:(a.tardanza||0)}" ${ausente?'disabled':''}>
                       ${!ausente && tardMin > 0 ? `<div style="font-size:11px;color:var(--amber);">${tardMin} min hoy</div>` : ''}
-                      ${!ausente && acumTard[t.id] > 30 ? `<div style="font-size:11px;color:var(--danger);">${acumTard[t.id]} min en la quincena — descuento $5.00</div>` : (!ausente && acumTard[t.id] > 0 ? `<div style="font-size:11px;color:var(--text-gray);">${acumTard[t.id]} min acumulados en la quincena</div>` : '')}
+                      ${!ausente && acumTard[t.id] > 30 ? `<div style="font-size:11px;color:var(--danger);">${acumTard[t.id]} min en la quincena — descuento ${fmt(calcDeduccionTardanza(acumTard[t.id]))}</div>` : (!ausente && acumTard[t.id] > 0 ? `<div style="font-size:11px;color:var(--text-gray);">${acumTard[t.id]} min acumulados en la quincena</div>` : '')}
                     </td>
                     <td><label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" id="alm-${t.id}" ${a.almuerzo?'checked':''} ${ausente?'disabled':''}> Sí</label></td>
                     <td><input type="number" id="vale-${t.id}" class="form-input" style="width:70px;" min="0" step="0.01" value="${a.vale||0}" placeholder="0.00"></td>
@@ -297,7 +300,7 @@ Router.register('nomina', async (view) => {
 
         <div style="margin-top:12px;padding:12px;background:var(--green-light);border-radius:8px;font-size:13px;color:var(--text-gray);">
           ⏰ Horario por defecto: <strong>08:00 – 17:00</strong>. La tardanza se calcula automáticamente desde las 08:00, pero se puede ajustar manualmente (llegadas tarde, salidas tempranas o permisos).
-          Descuento: se suman todos los minutos de tardanza de la quincena y si el total sobrepasa 30 min, se descuenta $5.00 una sola vez (ver pestaña Cálculo de Nómina).
+          Descuento: se suman todos los minutos de tardanza de la quincena; si el total pasa de 30 min, se descuentan $5 por cada 45 min acumulados (proporcional — ver pestaña Cálculo de Nómina).
         </div>
       </div>
     `;

@@ -1457,26 +1457,39 @@ async function generarPDFCotizacion(id, fromForm = false) {
 
   cy += 10;
 
-  // TABLA PRINCIPAL
+  // TABLA PRINCIPAL — a cada columna angosta (ancho/alto/unidad/cant/total) se le
+  // fija un ancho chico para que DESCRIPCIÓN se quede con la mayor parte del
+  // espacio: así el texto envuelve en menos líneas y la tabla ocupa menos alto,
+  // dejando lugar para que condiciones/métodos de pago quepan en la misma hoja.
   const config = c.configCols || {};
+  // La columna de foto sólo se dibuja si de verdad hay al menos una foto adjunta
+  // en alguna línea — si no, ni siquiera se agrega la columna, y ese espacio se
+  // lo queda DESCRIPCIÓN (la mayoría de las cotizaciones no llevan fotos).
+  const hayFotos = (c.lineas||[]).some(l => l.fotoBase64);
+  const mostrarFoto = !!(config.foto && hayFotos);
   const colNames = ['ITEM'];
-  if (config.foto) colNames.push('FOTO/REF');
-  colNames.push('DESCRIPCIÓN');
-  if (config.ancho) colNames.push('ANCHO');
-  if (config.alto) colNames.push('ALTO');
-  if (config.unidad) colNames.push('UNIDAD');
+  const colWidths = { 0: 10 };
+  let colIdx = 1;
+  if (mostrarFoto) { colNames.push('FOTO/REF'); colWidths[colIdx++] = 20; }
+  const descIdx = colIdx;
+  colNames.push('DESCRIPCIÓN'); colIdx++; // sin cellWidth: absorbe el espacio restante
+  if (config.ancho)   { colNames.push('ANCHO (m)');  colWidths[colIdx++] = 11; }
+  if (config.alto)    { colNames.push('ALTO (m)');   colWidths[colIdx++] = 11; }
+  if (config.unidad)  { colNames.push('UNIDAD'); colWidths[colIdx++] = 10; }
   // Se omiten intencionalmente m2 y precio unitario en el PDF: son cálculo
   // interno de la empresa para cotizar, no algo que deba ver el cliente.
-  if (config.cantidad) colNames.push('CANT.');
-  colNames.push('TOTAL');
+  if (config.cantidad){ colNames.push('CANT.');  colWidths[colIdx++] = 9; }
+  colNames.push('TOTAL'); colWidths[colIdx++] = 18;
 
   const rows = (c.lineas||[]).map((l, idx) => {
     const row = [];
     row.push(idx + 1);
-    if (config.foto) row.push({ content: '', styles: { minCellHeight: 22 } });
+    if (mostrarFoto) row.push({ content: '', styles: l.fotoBase64 ? { minCellHeight: 22 } : {} });
     row.push(l.producto || l.descripcion || '—');
-    if (config.ancho) row.push(l.ancho ? l.ancho + ' m' : '—');
-    if (config.alto) row.push(l.alto ? l.alto + ' m' : '—');
+    // Sin el sufijo " m": en columnas angostas el texto envolvía y la "m" quedaba
+    // en su propia línea, encimada con el número. El encabezado ya indica "(m)".
+    if (config.ancho) row.push(l.ancho ? String(l.ancho) : '—');
+    if (config.alto) row.push(l.alto ? String(l.alto) : '—');
     if (config.unidad) row.push(l.unidad || '—');
     // No incluir la celda de m2 ni precio unitario en las filas
     if (config.cantidad) row.push(l.cantidad || 1);
@@ -1495,19 +1508,21 @@ async function generarPDFCotizacion(id, fromForm = false) {
         textColor:  255,
         fontStyle:  'bold',
         fontSize:   7,
-        cellPadding: 3,
+        cellPadding: 2,
         halign: 'center'
       },
       bodyStyles: {
-        fontSize:    9,
+        fontSize:    7.5,
         textColor:   0,
-        cellPadding: 3,
+        cellPadding: 1.2,
         valign: 'middle',
-        halign: 'center'
+        halign: 'center',
+        lineHeightFactor: 1.08,
       },
       columnStyles: {
-        0: { cellWidth: 14, fontSize: 6, cellPadding: 1 }, // ITEM
-        [config.foto ? 2 : 1]: { halign: 'left' }, // DESCRIPCION izq
+        ...Object.fromEntries(Object.entries(colWidths).map(([i, w]) => [i, { cellWidth: w }])),
+        0: { cellWidth: colWidths[0], fontSize: 6, cellPadding: 1 }, // ITEM
+        [descIdx]: { halign: 'left' }, // DESCRIPCION izq, sin cellWidth (absorbe lo que sobra)
       },
       margin: { left: ML, right: 20 },
       styles: {
@@ -1515,7 +1530,7 @@ async function generarPDFCotizacion(id, fromForm = false) {
         lineWidth: 0.2,
       },
       didDrawCell: function(data) {
-        if (data.section === 'body' && config.foto && data.column.index === 1) {
+        if (data.section === 'body' && mostrarFoto && data.column.index === 1) {
           const linea = (c.lineas||[])[data.row.index];
           if (linea && linea.fotoBase64) {
             doc.addImage(linea.fotoBase64, 'JPEG', data.cell.x + 2, data.cell.y + 2, 18, 18);
@@ -1574,7 +1589,7 @@ async function generarPDFCotizacion(id, fromForm = false) {
     theme: 'grid',
     tableWidth: 80,
     margin: { left: MR - 80, right: 20 },
-    styles: { fontSize: 9, cellPadding: 2.2, lineColor: [0,0,0], lineWidth: 0.2, textColor: 0 },
+    styles: { fontSize: 8.5, cellPadding: 1.7, lineColor: [0,0,0], lineWidth: 0.2, textColor: 0 },
     columnStyles: {
       0: { fontStyle: 'bold', halign: 'right', cellWidth: 40 },
       1: { halign: 'right', cellWidth: 35 },
@@ -1633,22 +1648,32 @@ async function generarPDFCotizacion(id, fromForm = false) {
 
   const lineasCondiciones = defaultCond.flatMap(l => doc.splitTextToSize(l, condWrapWidth));
 
-  // Alto de la caja calculado según el contenido real, para que nada quede cortado
+  // Alto "normal" de la caja (espaciado cómodo) según el contenido real.
   const contactLineas = 4; // Crystal Service / teléfono / email / sitio web
-  const boxHeight = Math.max(40, 9 + (lineasCondiciones.length * 3.5) + 4 + (contactLineas * 4) + 4);
+  const tituloGap = 5, condGap = 9, condLineH = 3.5, contactGap = 4, contactLineH = 4, boxPad = 4;
+  const fullBoxHeight = Math.max(40, condGap + (lineasCondiciones.length * condLineH) + contactGap + (contactLineas * contactLineH) + boxPad);
   const marginInferior = 15;
-  let by = Math.max(ty + 10, 210);
 
   // El piso de 210 es solo estético (evita que el cuadro quede flotando muy
-  // arriba en cotizaciones cortas); si con ese piso el cuadro no cabe, primero
-  // se sube lo justo para que quepa en la misma página — recién si ni así cabe
-  // (porque la tabla de ítems ya ocupa casi toda la hoja) se pasa a una nueva.
+  // arriba en cotizaciones cortas). Si con espaciado normal no cabe en lo que
+  // queda de hoja, se comprime el espaciado (letra un poco más chica, líneas
+  // más juntas) para que TODO entre en una sola página — recién si ni
+  // comprimido cabe (la tabla de ítems ya ocupa casi toda la hoja) se pasa a
+  // una página nueva.
+  let by = Math.max(ty + 10, 210);
+  let boxHeight = fullBoxHeight;
+  let scale = 1;
   if (by + boxHeight > H - marginInferior) {
-    by = Math.max(ty + 10, H - marginInferior - boxHeight);
+    const disponible = (H - marginInferior) - Math.max(ty + 10, 25);
+    scale = Math.max(0.6, Math.min(1, disponible / fullBoxHeight));
+    boxHeight = fullBoxHeight * scale;
+    by = Math.max(ty + 10, (H - marginInferior) - boxHeight);
   }
-  if (by + boxHeight > H - marginInferior) {
+  if (by + boxHeight > H - marginInferior + 0.5) {
     doc.addPage();
     by = 20;
+    boxHeight = fullBoxHeight;
+    scale = 1;
   }
 
   // Dibuja el marco general de info inferior
@@ -1658,28 +1683,28 @@ async function generarPDFCotizacion(id, fromForm = false) {
 
   doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('Condiciones:', ML + 2, by + 5);
+  doc.setFontSize(Math.max(6.5, 8 * scale));
+  doc.text('Condiciones:', ML + 2, by + tituloGap * scale);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  let cy_cond = by + 9;
+  doc.setFontSize(Math.max(5.5, 7 * scale));
+  let cy_cond = by + condGap * scale;
   for (const l of lineasCondiciones) {
     doc.text(l, ML + 2, cy_cond);
-    cy_cond += 3.5;
+    cy_cond += condLineH * scale;
   }
 
   // Info Contacto
-  cy_cond += 4;
+  cy_cond += contactGap * scale;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(Math.max(7, 9 * scale));
   doc.text('Crystal Service', ML + 2, cy_cond);
-  cy_cond += 4;
+  cy_cond += contactLineH * scale;
   doc.text('6456-2658', ML + 2, cy_cond);
-  cy_cond += 4;
+  cy_cond += contactLineH * scale;
   doc.setFont('helvetica', 'normal');
   doc.text('email: crystalservicejj@gmail.com', ML + 2, cy_cond);
-  cy_cond += 4;
+  cy_cond += contactLineH * scale;
   doc.setTextColor(...greenHeader);
   doc.setFont('helvetica', 'bold');
   doc.text('https://www.crystalservicejj.com', ML + 2, cy_cond);
@@ -1687,21 +1712,21 @@ async function generarPDFCotizacion(id, fromForm = false) {
   // Métodos de Pago ACH a la derecha (si hay imagen provista)
   if (pagosBase64) {
     // Si el usuario carga el metodos_pago.png
-    doc.addImage(pagosBase64, 'PNG', W - 80, by + 2, 60, 36);
+    doc.addImage(pagosBase64, 'PNG', W - 80, by + 2 * scale, 60, 36 * scale);
   } else {
     // Texto fallback si no hay imagen
     doc.setTextColor(0, 0, 0);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.text('Para confección de cheque o ACH:', W - 70, by + 5);
-    doc.text('CRYSTAL SERVICE', W - 70, by + 9);
+    doc.setFontSize(Math.max(5.5, 7 * scale));
+    doc.text('Para confección de cheque o ACH:', W - 70, by + 5 * scale);
+    doc.text('CRYSTAL SERVICE', W - 70, by + 9 * scale);
     doc.setFont('helvetica', 'normal');
-    doc.text('Banistmo 4150101799', W - 70, by + 13);
-    doc.text('Banco General 04-07-00-000738-5', W - 70, by + 17);
-    doc.text('YAPPY: 63621132 / 63621210', W - 70, by + 21);
+    doc.text('Banistmo 4150101799', W - 70, by + 13 * scale);
+    doc.text('Banco General 04-07-00-000738-5', W - 70, by + 17 * scale);
+    doc.text('YAPPY: 63621132 / 63621210', W - 70, by + 21 * scale);
     doc.setTextColor(...greenHeader);
     doc.setFont('helvetica', 'bold');
-    doc.text('GRACIAS POR SU CONFIANZA', W - 60, by + 35);
+    doc.text('GRACIAS POR SU CONFIANZA', W - 60, by + boxHeight - 2);
   }
 
   /* ── MARCA DE AGUA ──
