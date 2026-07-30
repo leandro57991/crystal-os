@@ -67,7 +67,7 @@ Router.register('estado-cuenta', async (view) => {
         <div class="filter-search">${UI.icons.search}
           <input id="ec-search" type="text" placeholder="Buscar cliente…" value="${busqueda}">
         </div>
-        <button class="btn btn-primary btn-sm" onclick="UI.openModal('modal-nuevo-cobro-ec')">
+        <button class="btn btn-primary btn-sm" onclick="window._abrirNuevoCobroEC()">
           ${UI.icons.plus} Nuevo cobro
         </button>
       </div>
@@ -140,9 +140,13 @@ Router.register('estado-cuenta', async (view) => {
                 <td style="font-weight:700;color:${saldo>0?'var(--danger)':'var(--success)'};">${fmt(saldo)}</td>
                 <td><span class="badge ${st}">${saldo<=0.01?'Pagado':'Pendiente'}</span></td>
                 <td>
-                  <button class="btn btn-sm btn-primary" onclick="abrirModalPagoEC('${c.id}','${(c.clienteNombre||'').replace(/'/g,"\\'")}','${fmt(saldo)}')">
-                    + Pago
-                  </button>
+                  <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                    <button class="btn btn-sm btn-primary" onclick="abrirModalPagoEC('${c.id}','${(c.clienteNombre||'').replace(/'/g,"\\'")}','${fmt(saldo)}')">
+                      + Pago
+                    </button>
+                    <button class="btn btn-sm btn-outline" title="Editar" onclick="editarCobroEC('${c.id}')">${UI.icons.edit}</button>
+                    <button class="btn btn-sm btn-outline" style="color:var(--danger);" title="Eliminar" onclick="eliminarCobroEC('${c.id}','${(c.factura||c.clienteNombre||'este registro').replace(/'/g,"\\'")}')">${UI.icons.trash}</button>
+                  </div>
                 </td>
               </tr>`;
             }).join('')}
@@ -186,7 +190,7 @@ Router.register('estado-cuenta', async (view) => {
         <button class="btn btn-secondary btn-sm" onclick="generarPDFEstadoCuenta('${cl.nombre.replace(/'/g,"\\'")}')">
           ${UI.icons.pdf} Generar estado de cuenta PDF
         </button>
-        <button class="btn btn-outline btn-sm" onclick="UI.openModal('modal-nuevo-cobro-ec');document.getElementById('nc-cliente-ec').value='${cl.nombre.replace(/'/g,"\\'")}'">
+        <button class="btn btn-outline btn-sm" onclick="window._abrirNuevoCobroEC();document.getElementById('nc-cliente-ec').value='${cl.nombre.replace(/'/g,"\\'")}'">
           ${UI.icons.plus} Agregar proyecto
         </button>
       </div>
@@ -226,7 +230,45 @@ Router.register('estado-cuenta', async (view) => {
     await render();
   };
 
+  // Deja el modal listo para crear un cobro nuevo (limpia el modo edición
+  // por si quedó abierto de una edición anterior).
+  window._abrirNuevoCobroEC = () => {
+    document.getElementById('nc-id-ec').value = '';
+    document.getElementById('nc-modal-title-ec').textContent = 'Nuevo Proyecto / Cobro';
+    document.getElementById('nc-abono-inicial-row-ec').style.display = '';
+    ['nc-cliente-ec','nc-telefono-ec','nc-factura-ec','nc-vencimiento-ec','nc-desc-ec','nc-nota-ec','nc-total-ec','nc-pagado-ec']
+      .forEach(id => document.getElementById(id).value = '');
+    UI.openModal('modal-nuevo-cobro-ec');
+  };
+
+  // Abre el mismo modal en modo edición, precargado con el cobro existente.
+  // El abono inicial no se toca aquí — los pagos se registran/editan aparte
+  // con el botón "+ Pago", para no desincronizar el total abonado real.
+  window.editarCobroEC = async (id) => {
+    const c = await DB.getOne('cobros', id);
+    if (!c) { UI.toast('Registro no encontrado', 'error'); return; }
+    document.getElementById('nc-id-ec').value = id;
+    document.getElementById('nc-modal-title-ec').textContent = 'Editar Proyecto / Cobro';
+    document.getElementById('nc-abono-inicial-row-ec').style.display = 'none';
+    document.getElementById('nc-cliente-ec').value    = c.clienteNombre || '';
+    document.getElementById('nc-telefono-ec').value   = c.telefono || '';
+    document.getElementById('nc-factura-ec').value    = c.factura || '';
+    document.getElementById('nc-vencimiento-ec').value= c.vencimiento || '';
+    document.getElementById('nc-desc-ec').value       = c.notas || '';
+    document.getElementById('nc-nota-ec').value        = c.nota || '';
+    document.getElementById('nc-total-ec').value       = c.total || 0;
+    UI.openModal('modal-nuevo-cobro-ec');
+  };
+
+  window.eliminarCobroEC = async (id, label) => {
+    if (!confirm(`¿Eliminar "${label}"? Esto borra también su historial de abonos. Esta acción no se puede deshacer.`)) return;
+    await DB.deleteCobro(id);
+    UI.toast('Registro eliminado', 'success');
+    await render();
+  };
+
   window.guardarNuevoCobroEC = async () => {
+    const id = document.getElementById('nc-id-ec').value;
     const data = {
       clienteNombre: document.getElementById('nc-cliente-ec').value,
       telefono:      document.getElementById('nc-telefono-ec').value,
@@ -234,27 +276,40 @@ Router.register('estado-cuenta', async (view) => {
       notas:         document.getElementById('nc-desc-ec').value,
       nota:          document.getElementById('nc-nota-ec').value,
       total:         parseFloat(document.getElementById('nc-total-ec').value)||0,
-      pagado:        parseFloat(document.getElementById('nc-pagado-ec').value)||0,
       vencimiento:   document.getElementById('nc-vencimiento-ec').value,
     };
-    data.saldo  = data.total - data.pagado;
-    data.estado = data.saldo <= 0.01 ? 'Pagado' : data.pagado > 0 ? 'Parcial' : 'Pendiente';
     if (!data.clienteNombre) { UI.toast('Nombre del cliente requerido', 'error'); return; }
 
-    const cobro = await DB.saveCobro(data);
-    // Si hubo un pago inicial, registrarlo como abono
-    if (data.pagado > 0) {
-      await DB.save('pagos', {
-        cobroId: cobro.id,
-        monto:   data.pagado,
-        fecha:   new Date().toISOString().slice(0,10),
-        metodo:  document.getElementById('nc-metodo-ec').value || 'Efectivo',
-        notas:   'Abono inicial',
-      });
+    if (id) {
+      // Edición: mantiene lo ya abonado/estado tal cual, solo cambian los
+      // datos editables (el abono se maneja aparte con "+ Pago").
+      const existente = await DB.getOne('cobros', id);
+      const pagado = existente?.pagado || 0;
+      data.id     = id;
+      data.pagado = pagado;
+      data.saldo  = data.total - pagado;
+      data.estado = data.saldo <= 0.01 ? 'Pagado' : pagado > 0 ? 'Parcial' : 'Pendiente';
+      await DB.saveCobro(data);
+      UI.toast('Cobro actualizado', 'success');
+    } else {
+      data.pagado = parseFloat(document.getElementById('nc-pagado-ec').value)||0;
+      data.saldo  = data.total - data.pagado;
+      data.estado = data.saldo <= 0.01 ? 'Pagado' : data.pagado > 0 ? 'Parcial' : 'Pendiente';
+      const cobro = await DB.saveCobro(data);
+      // Si hubo un pago inicial, registrarlo como abono
+      if (data.pagado > 0) {
+        await DB.save('pagos', {
+          cobroId: cobro.id,
+          monto:   data.pagado,
+          fecha:   new Date().toISOString().slice(0,10),
+          metodo:  document.getElementById('nc-metodo-ec').value || 'Efectivo',
+          notas:   'Abono inicial',
+        });
+      }
+      UI.toast('Cobro registrado', 'success');
     }
 
     UI.closeModal('modal-nuevo-cobro-ec');
-    UI.toast('Cobro registrado', 'success');
     await render();
   };
 
@@ -679,10 +734,11 @@ Router.register('estado-cuenta', async (view) => {
     <div class="modal-overlay" id="modal-nuevo-cobro-ec">
       <div class="modal">
         <div class="modal-header">
-          <div class="modal-title">Nuevo Proyecto / Cobro</div>
+          <div class="modal-title" id="nc-modal-title-ec">Nuevo Proyecto / Cobro</div>
           <button class="modal-close" onclick="UI.closeModal('modal-nuevo-cobro-ec')">${UI.icons.x}</button>
         </div>
         <div class="modal-body">
+          <input type="hidden" id="nc-id-ec" value="">
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Cliente <span class="required">*</span></label>
@@ -711,22 +767,25 @@ Router.register('estado-cuenta', async (view) => {
             <label class="form-label">Nota (plan de pago, observaciones…)</label>
             <input id="nc-nota-ec" class="form-input" placeholder="Ej: Abono restante en 2 partes, 30 jun y 15 jul">
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Total cotizado ($)</label>
-              <input id="nc-total-ec" class="form-input" type="number" min="0" step="0.01" placeholder="0.00">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Abono inicial ($)</label>
-              <input id="nc-pagado-ec" class="form-input" type="number" min="0" step="0.01" placeholder="0.00">
-            </div>
-          </div>
           <div class="form-group">
-            <label class="form-label">Método del abono inicial</label>
-            <select id="nc-metodo-ec" class="form-select">
-              <option>Efectivo</option><option>Transferencia</option>
-              <option>Cheque</option><option>ACH</option>
-            </select>
+            <label class="form-label">Total cotizado ($)</label>
+            <input id="nc-total-ec" class="form-input" type="number" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div id="nc-abono-inicial-row-ec">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Abono inicial ($)</label>
+                <input id="nc-pagado-ec" class="form-input" type="number" min="0" step="0.01" placeholder="0.00">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Método del abono inicial</label>
+                <select id="nc-metodo-ec" class="form-select">
+                  <option>Efectivo</option><option>Transferencia</option>
+                  <option>Cheque</option><option>ACH</option>
+                </select>
+              </div>
+            </div>
+            <p style="font-size:12px;color:var(--text-gray);margin-top:-8px;">Los abonos posteriores se registran con el botón "+ Pago" de cada proyecto.</p>
           </div>
         </div>
         <div class="modal-footer">

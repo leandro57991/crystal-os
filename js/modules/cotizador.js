@@ -767,10 +767,13 @@ Router.register('nueva-cotizacion', async (view, params) => {
           <button class="modal-close" onclick="document.getElementById('modal-media-lib').style.display='none'">${UI.icons.x}</button>
         </div>
         <div class="modal-body">
-          <div style="display:flex;gap:12px;margin-bottom:16px;">
-            <input type="text" id="media-search" class="form-input" placeholder="Buscar por nombre o etiqueta..." onkeyup="window._filterMedia(this.value)" style="flex:1;">
+          <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+            <input type="text" id="media-search" class="form-input" placeholder="Buscar por nombre o etiqueta..." onkeyup="window._filterMedia(this.value)" style="flex:1;min-width:160px;">
+            <button class="btn btn-secondary" onclick="document.getElementById('media-upload-file').click()">${UI.icons.plus} Subir nueva foto</button>
             <button class="btn btn-outline" onclick="window._selectFoto('')">Quitar foto de ítem</button>
+            <input type="file" id="media-upload-file" accept="image/*" style="display:none;" onchange="window._uploadMediaLib(this.files[0])">
           </div>
+          <div id="media-upload-status" style="display:none;margin-bottom:12px;font-size:13px;color:var(--text-gray);"></div>
           <div id="media-lib-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;max-height:400px;overflow-y:auto;padding-right:8px;">
           </div>
         </div>
@@ -788,6 +791,32 @@ Router.register('nueva-cotizacion', async (view, params) => {
     } catch {
       grid.innerHTML = '<p style="color:var(--danger);">Error al cargar biblioteca.</p>';
     }
+  };
+
+  // Subir una foto nueva directo desde el cotizador — queda guardada en la
+  // Biblioteca de Fotos (misma tabla que el módulo Biblioteca) y se asigna
+  // de una vez a la línea que se estaba editando.
+  window._uploadMediaLib = (file) => {
+    if (!file) return;
+    const status = document.getElementById('media-upload-status');
+    status.style.display = 'block';
+    status.textContent = 'Subiendo foto...';
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target.result;
+      const nombre = file.name.replace(/\.[^.]+$/, '') || `Foto ${new Date().toLocaleDateString('es-PA')}`;
+      try {
+        await DB.saveImagen({ nombre, descripcion: '', carpeta: 'Cotizador', etiquetas: '', base64, fecha: new Date().toISOString() });
+        document.getElementById('media-upload-file').value = '';
+        status.style.display = 'none';
+        await window._loadMediaLib();
+        window._selectFoto(base64);
+        UI.toast('Foto subida y agregada a la biblioteca', 'success');
+      } catch (err) {
+        status.textContent = 'Error al subir la foto. Intenta de nuevo.';
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   window._filterMedia = (q) => {

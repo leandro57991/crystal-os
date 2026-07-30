@@ -181,6 +181,14 @@ async function registrarPago(cobroId, monto, fecha, metodo, notas) {
 
 async function getPagosByCobro(cobroId) { return getAll('pagos', 'cobroId', cobroId); }
 
+// Al eliminar un cobro también se borran sus pagos asociados — si no, quedan
+// filas huérfanas en "pagos" que ya no se pueden ver ni editar desde ningún lado.
+async function deleteCobro(id) {
+  const pagos = await getPagosByCobro(id);
+  await Promise.all(pagos.map(p => remove('pagos', p.id)));
+  return remove('cobros', id);
+}
+
 /* ── INVENTARIO ─────────────────────────────────────────────── */
 
 async function saveItemInventario(data) { return save('inventario', data); }
@@ -328,7 +336,7 @@ const DB = {
   getTrabajadores, saveTrabajador, deleteTrabajador,
   saveReporte, getReportesByFecha, getReportesByTrabajador,
   saveAsistencia, getAsistenciaByRango, getAsistenciaByFecha, deleteAsistencia,
-  saveCobro, getCobros, registrarPago, getPagosByCobro,
+  saveCobro, getCobros, registrarPago, getPagosByCobro, deleteCobro,
   saveItemInventario, getInventario, movimientoInventario,
   addNotificacion, getNotificacionesPendientes, marcarLeida,
   getUsuario, saveUsuario,
