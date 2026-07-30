@@ -223,7 +223,7 @@ Router.register('nomina', async (view) => {
     asistHoy.forEach(a => asistMap[a.trabajadorId] = a);
 
     // Minutos de tardanza acumulados en la quincena vigente (para saber si ya se
-    // sobrepasan los 30 min y toca el descuento de $5 — la regla es por período, no por día).
+    // sobrepasan los 30 min y toca descuento — la regla es por período, no por día).
     const { desde: qDesde, hasta: qHasta } = calcQuincena(fechaActual);
     const asistQuincena = await DB.getAsistenciaByRango(qDesde, qHasta);
     const acumTard = {};
@@ -515,6 +515,12 @@ Router.register('nomina', async (view) => {
           <label style="cursor:pointer;"><input type="checkbox" class="quin-rol-chk" value="Oficina" checked onchange="window.recalcQuincena()"> Oficina</label>
           <label style="cursor:pointer;"><input type="checkbox" class="quin-rol-chk" value="Eventual" checked onchange="window.recalcQuincena()"> Eventual</label>
         </div>
+        <div style="display:flex;gap:12px;margin-top:6px;margin-bottom:4px;flex-wrap:wrap;font-size:13px;align-items:center;" id="quin-colab-container">
+          <strong>Colaboradores:</strong>
+          <button type="button" class="btn btn-xs btn-outline" onclick="window._quinColabTodos(true)">Todos</button>
+          <button type="button" class="btn btn-xs btn-outline" onclick="window._quinColabTodos(false)">Ninguno</button>
+          ${trabajadores.map(t => `<label style="cursor:pointer;"><input type="checkbox" class="quin-colab-chk" value="${t.id}" checked onchange="window.recalcQuincena()"> ${t.nombre}</label>`).join('')}
+        </div>
         <div class="table-wrapper">
           <table class="table" id="tabla-quincena">
             <thead><tr>
@@ -535,7 +541,7 @@ Router.register('nomina', async (view) => {
           </table>
         </div>
         <div style="margin-top:12px;font-size:12px;color:var(--text-gray);">
-          ⚠️ Tardanza: se suman todos los minutos de tardanza (o salida temprano/permiso) de todo el periodo. Si el total sobrepasa 30 min, se descuenta $5.00 una sola vez.<br>
+          ⚠️ Tardanza: se suman todos los minutos de tardanza (o salida temprano/permiso) de todo el periodo. Si el total no pasa de 30 min no se descuenta nada; a partir de ahí se descuentan $5 por cada 45 min acumulados (proporcional, ej. 265 min = $29.44).<br>
           🌙 Noche: marcar el check "Noche" registra la noche completa según la tarifa configurada; si se indican horas, se paga proporcional.<br>
           ⏱️ Horas extra: se valoran a la tarifa/hora configurada; si no hay una, a la Tarifa Noche (monto pleno por hora); si tampoco hay, al ingreso diario ÷ 8 horas.<br>
           💼 Trabajadores Quincenales asumen su "Salario Fijo". Trabajadores Semanales suman según días/horas trabajadas.
@@ -543,6 +549,11 @@ Router.register('nomina', async (view) => {
       </div>
     `;
   }
+
+  window._quinColabTodos = (val) => {
+    document.querySelectorAll('.quin-colab-chk').forEach(c => c.checked = val);
+    window.recalcQuincena();
+  };
 
   window.recalcQuincena = async () => {
     const desde = document.getElementById('quin-desde')?.value;
@@ -553,11 +564,13 @@ Router.register('nomina', async (view) => {
     const asistencia   = await DB.getAsistenciaByRango(desde, hasta);
 
     const filtro = document.getElementById('quin-filtro')?.value || 'Todos';
-    const chkRoles = Array.from(document.querySelectorAll('.quin-rol-chk:checked')).map(c => c.value);
+    const chkRoles  = Array.from(document.querySelectorAll('.quin-rol-chk:checked')).map(c => c.value);
+    const chkColabs = Array.from(document.querySelectorAll('.quin-colab-chk:checked')).map(c => c.value);
 
-    const trabsFiltrados = trabajadores.filter(t => 
+    const trabsFiltrados = trabajadores.filter(t =>
       (filtro === 'Todos' || (t.tipoCobro || 'Semanal') === filtro) &&
-      chkRoles.includes(t.rol || 'Técnico')
+      chkRoles.includes(t.rol || 'Técnico') &&
+      chkColabs.includes(t.id)
     );
 
     const tbody = document.querySelector('#tabla-quincena tbody');
@@ -605,8 +618,8 @@ Router.register('nomina', async (view) => {
         if (hE > 0) brutoDias += (hE * tarifaHrExtra);
       });
 
-      // Tardanza: se suman los minutos de todo el período (minTard) y si el total
-      // sobrepasa 30 min, se descuenta $5 una sola vez — no por día.
+      // Tardanza: se suman los minutos de todo el período (minTard) — no por día —
+      // y se descuentan $5 por cada 45 min acumulados una vez que pasa de 30 min.
       const descTard = calcDeduccionTardanza(minTard);
 
       let bruto = brutoDias;
