@@ -81,10 +81,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           
           if ('Notification' in window && Notification.permission === 'granted') {
             new Notification('Crystal OS — Recordatorio', { body: r.texto });
-          } else {
-            setTimeout(() => alert('⏰ Recordatorio: ' + r.texto), 100);
           }
-          
+
           try {
              const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
              audio.play().catch(()=>{});

@@ -973,12 +973,12 @@ Router.register('ver-cotizacion', async (view, params) => {
       <div class="card-title" style="margin-bottom:16px;">Detalle del trabajo</div>
       <div class="table-wrapper">
         <table class="table">
-          <thead><tr><th>Producto / Servicio</th><th>m²/Cant.</th><th>Precio unit.</th><th>Total</th></tr></thead>
+          <thead><tr><th>Producto / Servicio</th><th>Precio unit.</th><th>m²/Cant.</th><th>Total</th></tr></thead>
           <tbody>
             ${(c.lineas||[]).map(l => `<tr>
               <td>${l.producto||l.descripcion||'—'}</td>
-              <td>${l.m2 !== '—' && l.m2 ? l.m2 : (l.cantidad||1)}</td>
               <td>${c.precioGlobal ? '—' : fmt(l.precio||0)}</td>
+              <td>${l.m2 !== '—' && l.m2 ? l.m2 : (l.cantidad||1)}</td>
               <td style="font-weight:600;">${c.precioGlobal ? '—' : fmt(l.total||0)}</td>
             </tr>`).join('')}
           </tbody>
@@ -1636,12 +1636,16 @@ async function generarPDFCotizacion(id, fromForm = false) {
   // Alto de la caja calculado según el contenido real, para que nada quede cortado
   const contactLineas = 4; // Crystal Service / teléfono / email / sitio web
   const boxHeight = Math.max(40, 9 + (lineasCondiciones.length * 3.5) + 4 + (contactLineas * 4) + 4);
+  const marginInferior = 15;
   let by = Math.max(ty + 10, 210);
 
-  // Si la cotización trae muchos ítems, la tabla empuja todo hacia abajo y esta
-  // caja de condiciones/métodos de pago ya no cabe en la página — se pasa a una
-  // página nueva en vez de dejarla cortada.
-  const marginInferior = 15;
+  // El piso de 210 es solo estético (evita que el cuadro quede flotando muy
+  // arriba en cotizaciones cortas); si con ese piso el cuadro no cabe, primero
+  // se sube lo justo para que quepa en la misma página — recién si ni así cabe
+  // (porque la tabla de ítems ya ocupa casi toda la hoja) se pasa a una nueva.
+  if (by + boxHeight > H - marginInferior) {
+    by = Math.max(ty + 10, H - marginInferior - boxHeight);
+  }
   if (by + boxHeight > H - marginInferior) {
     doc.addPage();
     by = 20;
