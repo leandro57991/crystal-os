@@ -5,104 +5,267 @@
    ========================================================= */
 
 Router.register('estado-cuenta', async (view) => {
-  let busqueda = '';
-  let pagina    = 1;
-  let porPagina = 15;
+  let busqueda    = '';
+  let pagina      = 1;
+  let porPagina   = 15;
+  let filtroEstado= 'Todos'; // Todos | Pendiente | AlDia | Favor
+  let fechaDesde  = '';
+  let fechaHasta  = '';
+  let clienteDetalleAbierto = null; // nombre del cliente cuyo panel de detalle está abierto (o null)
 
   async function buildClientData() {
-    const [cobros, pagos] = await Promise.all([
+    const [cobros, pagos, cotizaciones] = await Promise.all([
       DB.getCobros(),
       DB.getAll('pagos'),
+      DB.getCotizaciones(),
     ]);
 
-    // Agrupar cobros por cliente
+    // Cotizaciones Abonadas/Pagadas/Canceladas que todavía no tienen un cobro
+    // real asociado (p.ej. una cotización marcada Cancelada nunca dispara el
+    // flujo de abono) se muestran igual, como filas "virtuales" derivadas de
+    // la cotización — para que el Estado de Cuenta refleje todo, no solo lo
+    // que ya se sincronizó a mano.
+    const cotizacionesConCobro = new Set(cobros.filter(c => c.cotizacionId).map(c => c.cotizacionId));
+    const virtuales = cotizaciones
+      .filter(cot => ['Abonado','Pagado','Cancelada'].includes(cot.estado) && !cotizacionesConCobro.has(cot.id))
+      .map(cot => {
+        const pagado = cot.estado === 'Cancelada' ? (cot.montoAbono || 0) : (cot.montoAbono || 0);
+        return {
+          id: null,
+          cotizacionId: cot.id,
+          virtual: true,
+          clienteNombre: cot.clienteNombre,
+          telefono: cot.clienteTel || '',
+          factura: '#' + cot.numero,
+          notas: cot.notas || `Cotización #${cot.numero}`,
+          nota: cot.estado === 'Cancelada' ? 'Cancelada — no cuenta como saldo pendiente' : '',
+          total: cot.total || 0,
+          pagado,
+          // Una cotización cancelada no genera cobro pendiente real.
+          saldo: cot.estado === 'Cancelada' ? 0 : (cot.total || 0) - pagado,
+          estado: cot.estado === 'Cancelada' ? 'Cancelada' : (cot.estado === 'Pagado' ? 'Pagado' : 'Parcial'),
+          fecha: cot.fecha,
+          vencimiento: '',
+        };
+      });
+
+    const todos = [...cobros, ...virtuales];
+
+    // Agrupar por cliente
     const porCliente = {};
-    cobros.forEach(c => {
+    todos.forEach(c => {
       const key = (c.clienteNombre || '—').trim();
       if (!porCliente[key]) porCliente[key] = { nombre: key, telefono: '', cobros: [], totalFacturado: 0, totalAbonado: 0 };
       if (!porCliente[key].telefono && c.telefono) porCliente[key].telefono = c.telefono;
-      const pagosCobro = pagos.filter(p => p.cobroId === c.id);
-      const abonado = pagosCobro.reduce((s, p) => s + (p.monto || 0), 0);
+      const pagosCobro = c.virtual ? [] : pagos.filter(p => p.cobroId === c.id);
+      const abonado = c.virtual ? (c.pagado || 0) : pagosCobro.reduce((s, p) => s + (p.monto || 0), 0);
       porCliente[key].cobros.push({ ...c, pagosDetalle: pagosCobro.sort((a,b)=>a.fecha.localeCompare(b.fecha)), abonadoReal: abonado });
-      porCliente[key].totalFacturado += (c.total || 0);
-      porCliente[key].totalAbonado   += abonado;
+      // Las canceladas no suman al total facturado/por cobrar de la cartera.
+      if (c.estado !== 'Cancelada') {
+        porCliente[key].totalFacturado += (c.total || 0);
+        porCliente[key].totalAbonado   += abonado;
+      }
     });
 
     return Object.values(porCliente).sort((a,b) => a.nombre.localeCompare(b.nombre));
   }
 
   async function render() {
-    const clientes = await buildClientData();
+    const [clientes, pagos] = await Promise.all([buildClientData(), DB.getAll('pagos')]);
+
+    const cont = document.getElementById('ec-content');
+    if (!cont) return;
+
+    // KPIs globales (snapshot actual, no dependen del rango de fecha)
+    const totalCartera  = clientes.reduce((s,c)=>s+(c.totalFacturado-c.totalAbonado),0);
+    const totalPendientes = clientes.filter(c=>(c.totalFacturado-c.totalAbonado)>0.01).length;
+
+    // Rango de fecha: si no se eligió nada, el KPI de "generado" usa el mes
+    // actual por defecto (igual a como se ve normalmente un estado de cuenta).
+    const hoy = new Date().toISOString().slice(0,10);
+    const inicioMes = hoy.slice(0,7) + '-01';
+    const rangoDesde = fechaDesde || inicioMes;
+    const rangoHasta = fechaHasta || hoy;
+    const rangoActivo = !!(fechaDesde || fechaHasta);
+    const rangoLabel = rangoActivo ? 'en el período' : 'este mes';
+
+    let generadoPeriodo = 0;
+    clientes.forEach(cl => cl.cobros.forEach(c => {
+      if (c.estado === 'Cancelada') return;
+      const f = c.fecha || (c.creadoEn||'').slice(0,10);
+      if (f && f >= rangoDesde && f <= rangoHasta) generadoPeriodo += (c.total||0);
+    }));
+    const cobradoPeriodo = pagos.reduce((s,p) => (p.fecha && p.fecha >= rangoDesde && p.fecha <= rangoHasta) ? s + (p.monto||0) : s, 0);
+
+    // Clasificación por cliente (para el filtro de estado y la dona de saldos)
+    const clasificar = (cl) => {
+      const s = cl.totalFacturado - cl.totalAbonado;
+      if (s > 0.01) return 'Pendiente';
+      if (s < -0.01) return 'Favor';
+      return 'AlDia';
+    };
+    const pendCount  = clientes.filter(c=>clasificar(c)==='Pendiente').length;
+    const favorCount = clientes.filter(c=>clasificar(c)==='Favor').length;
+    const aldiaCount = clientes.length - pendCount - favorCount;
+    const favorTotal = clientes.reduce((s,c)=>{ const v=c.totalFacturado-c.totalAbonado; return v<-0.01? s+Math.abs(v) : s; },0);
+    const totalDona  = clientes.length || 1;
+    const pctPend  = pendCount/totalDona*100, pctFavor = favorCount/totalDona*100;
+
+    // Próximos cobros: cualquier cobro con vencimiento y saldo pendiente real
+    const proximos = [];
+    clientes.forEach(cl => cl.cobros.forEach(c => {
+      const saldo = c.total - (c.abonadoReal||0);
+      if (c.vencimiento && saldo > 0.01 && c.estado !== 'Cancelada') {
+        proximos.push({ cliente: cl.nombre, factura: c.factura, saldo, vencimiento: c.vencimiento });
+      }
+    }));
+    proximos.sort((a,b)=>a.vencimiento.localeCompare(b.vencimiento));
+    const proximosTop = proximos.slice(0,5);
+
+    // Filtro visible: búsqueda + estado + rango de fecha (si se eligió uno)
     let lista = clientes;
     if (busqueda) {
       const q = busqueda.toLowerCase();
       lista = lista.filter(c => c.nombre.toLowerCase().includes(q));
     }
+    if (filtroEstado !== 'Todos') lista = lista.filter(c => clasificar(c) === filtroEstado);
+    if (rangoActivo) {
+      lista = lista.filter(cl => cl.cobros.some(c => {
+        const f = c.fecha || (c.creadoEn||'').slice(0,10);
+        return f && f >= rangoDesde && f <= rangoHasta;
+      }));
+    }
 
-    const cont = document.getElementById('ec-content');
-    if (!cont) return;
-
-    const totalCartera  = clientes.reduce((s,c)=>s+(c.totalFacturado-c.totalAbonado),0);
-    const totalClientes = clientes.filter(c=>(c.totalFacturado-c.totalAbonado)>0.01).length;
     const pag = UI.paginar(lista, pagina, porPagina);
     pagina = pag.pagina;
 
     cont.innerHTML = `
-      <div class="stats-row" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:20px;">
+      <div class="stats-row" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:20px;">
         <div class="stat-pill">
           <div class="stat-num">${clientes.length}</div>
           <div class="stat-lbl">Clientes en cartera</div>
         </div>
         <div class="stat-pill">
-          <div class="stat-num" style="color:var(--amber);">${totalClientes}</div>
+          <div class="stat-num" style="color:var(--amber);">${totalPendientes}</div>
           <div class="stat-lbl">Con saldo pendiente</div>
         </div>
         <div class="stat-pill">
           <div class="stat-num" style="color:var(--danger);">${fmt(totalCartera)}</div>
           <div class="stat-lbl">Total por cobrar</div>
         </div>
+        <div class="stat-pill">
+          <div class="stat-num" style="color:var(--success);">${fmt(generadoPeriodo)}</div>
+          <div class="stat-lbl">Generado ${rangoLabel}</div>
+        </div>
       </div>
 
-      <div class="filter-bar" style="margin-bottom:16px;">
+      <div class="filter-bar" style="margin-bottom:16px;flex-wrap:wrap;">
         <div class="filter-search">${UI.icons.search}
           <input id="ec-search" type="text" placeholder="Buscar cliente…" value="${busqueda}">
         </div>
+        <select id="ec-filtro-estado" class="form-select" style="width:150px;" onchange="window._ecFiltroEstado(this.value)">
+          <option value="Todos" ${filtroEstado==='Todos'?'selected':''}>Todos los estados</option>
+          <option value="Pendiente" ${filtroEstado==='Pendiente'?'selected':''}>Pendiente</option>
+          <option value="AlDia" ${filtroEstado==='AlDia'?'selected':''}>Al día</option>
+          <option value="Favor" ${filtroEstado==='Favor'?'selected':''}>A favor</option>
+        </select>
+        <input type="date" id="ec-desde" class="form-input" style="width:150px;" value="${fechaDesde}" onchange="window._ecFecha('desde',this.value)" title="Desde">
+        <input type="date" id="ec-hasta" class="form-input" style="width:150px;" value="${fechaHasta}" onchange="window._ecFecha('hasta',this.value)" title="Hasta">
+        ${rangoActivo ? `<button class="btn btn-sm btn-outline" onclick="window._ecFecha('clear')">Limpiar fechas</button>` : ''}
         <button class="btn btn-primary btn-sm" onclick="window._abrirNuevoCobroEC()">
           ${UI.icons.plus} Nuevo cobro
         </button>
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:12px;">
-        ${lista.length === 0
-          ? `<div class="card"><div class="empty-state"><h3>Sin clientes</h3><p>Registra cobros para ver estados de cuenta</p></div></div>`
-          : pag.items.map(cl => {
-              const saldoTotal = cl.totalFacturado - cl.totalAbonado;
-              const badge = saldoTotal <= 0.01 ? 'badge-success' : saldoTotal > 0 ? 'badge-amber' : 'badge-gray';
-              const lbl   = saldoTotal <= 0.01 ? 'Al día' : `Debe ${fmt(saldoTotal)}`;
-              return `
-                <div class="card">
-                  <div style="display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="toggleCliente('${cl.nombre.replace(/'/g,"\\'")}')">
-                    <div class="avatar" style="background:var(--green-soft);color:var(--green-main);">${cl.nombre[0].toUpperCase()}</div>
-                    <div style="flex:1;">
-                      <div style="font-size:15px;font-weight:700;">${cl.nombre}</div>
-                      <div style="font-size:12px;color:var(--text-gray);">${cl.cobros.length} proyecto(s) registrado(s)${cl.telefono ? ` · ${cl.telefono}` : ''}</div>
-                    </div>
-                    <div style="text-align:right;">
-                      <div style="font-size:18px;font-weight:700;color:${saldoTotal>0?'var(--danger)':'var(--success)'};">${fmt(saldoTotal)}</div>
-                      <span class="badge ${badge}">${lbl}</span>
-                    </div>
-                    <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();generarPDFEstadoCuenta('${cl.nombre.replace(/'/g,"\\'")}')">
-                      ${UI.icons.pdf} PDF
-                    </button>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:start;">
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div class="table-wrapper">
+            <table class="table">
+              <thead><tr><th>Cliente</th><th>Proyectos</th><th>Último pago</th><th>Saldo</th><th>Estado</th><th></th></tr></thead>
+              <tbody>
+                ${lista.length === 0
+                  ? `<tr><td colspan="6" class="table-empty">Sin clientes para este filtro</td></tr>`
+                  : pag.items.map(cl => {
+                      const saldoTotal = cl.totalFacturado - cl.totalAbonado;
+                      const est = clasificar(cl);
+                      const badge = est==='Pendiente'?'badge-amber':est==='Favor'?'badge-blue':'badge-success';
+                      const lbl   = est==='Pendiente'?'Pendiente':est==='Favor'?'A favor':'Al día';
+                      const ultimoPago = cl.cobros.flatMap(c=>c.pagosDetalle).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+                      return `<tr style="cursor:pointer;" onclick="window._verDetalleClienteEC('${cl.nombre.replace(/'/g,"\\'")}')">
+                        <td>
+                          <div style="display:flex;align-items:center;gap:10px;">
+                            <div class="avatar" style="width:32px;height:32px;font-size:13px;background:var(--green-soft);color:var(--green-main);">${cl.nombre[0].toUpperCase()}</div>
+                            <div>
+                              <div style="font-weight:600;">${cl.nombre}</div>
+                              ${cl.telefono ? `<div style="font-size:11px;color:var(--text-gray);">${cl.telefono}</div>` : ''}
+                            </div>
+                          </div>
+                        </td>
+                        <td>${cl.cobros.length}</td>
+                        <td style="color:var(--text-gray);">${ultimoPago ? ultimoPago.fecha : '—'}</td>
+                        <td style="font-weight:700;color:${saldoTotal>0.01?'var(--danger)':saldoTotal<-0.01?'var(--success)':'var(--text-gray)'};">${fmt(saldoTotal)}</td>
+                        <td><span class="badge ${badge}">${lbl}</span></td>
+                        <td onclick="event.stopPropagation();">
+                          <button class="btn btn-sm btn-secondary" title="PDF" onclick="generarPDFEstadoCuenta('${cl.nombre.replace(/'/g,"\\'")}')">${UI.icons.pdf}</button>
+                        </td>
+                      </tr>`;
+                    }).join('')
+                }
+              </tbody>
+            </table>
+          </div>
+          <div style="padding:12px 16px;" id="ec-pagination">${UI.paginacionHTML(pag, 'window._ecPagina', 'window._ecPorPagina')}</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <div class="card">
+            <div style="font-weight:700;margin-bottom:14px;">Resumen de saldos</div>
+            <div style="display:flex;align-items:center;gap:16px;">
+              <div style="width:110px;height:110px;flex-shrink:0;border-radius:50%;background:conic-gradient(var(--danger) 0% ${pctPend}%, var(--green-main) ${pctPend}% ${pctPend+pctFavor}%, var(--green-soft) ${pctPend+pctFavor}% 100%);display:flex;align-items:center;justify-content:center;">
+                <div style="width:66px;height:66px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                  <div style="font-size:9px;color:var(--text-gray);">Total</div>
+                  <div style="font-size:12px;font-weight:700;">${fmt(totalCartera)}</div>
+                </div>
+              </div>
+              <div style="font-size:12px;flex:1;">
+                <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;"><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger);margin-right:6px;"></span>Por cobrar</span><strong>${fmt(totalCartera)}</strong></div>
+                <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;"><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green-main);margin-right:6px;"></span>A favor</span><strong>${fmt(favorTotal)}</strong></div>
+                <div style="display:flex;justify-content:space-between;gap:8px;"><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green-soft);margin-right:6px;"></span>Al día</span><strong>${aldiaCount}</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="font-weight:700;margin-bottom:12px;">Cobrado vs. pendiente <span style="font-weight:400;color:var(--text-gray);font-size:12px;">(${rangoLabel})</span></div>
+            <div style="margin-bottom:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><span>Cobrado</span><strong style="color:var(--success);">${fmt(cobradoPeriodo)}</strong></div>
+              <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${Math.min(100,(cobradoPeriodo/((cobradoPeriodo+totalCartera)||1))*100)}%;background:var(--success);"></div></div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><span>Pendiente (total)</span><strong style="color:var(--danger);">${fmt(totalCartera)}</strong></div>
+              <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${Math.min(100,(totalCartera/((cobradoPeriodo+totalCartera)||1))*100)}%;background:var(--danger);"></div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="font-weight:700;margin-bottom:12px;">Próximos cobros</div>
+            ${proximosTop.length === 0
+              ? `<p style="color:var(--text-gray);font-size:13px;">Sin vencimientos próximos registrados.</p>`
+              : proximosTop.map(p => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+                  <div>
+                    <div style="font-weight:600;font-size:13px;">${p.cliente}</div>
+                    <div style="font-size:11px;color:var(--text-gray);">${p.factura||''}</div>
                   </div>
-                  <div id="detalle-${slugify(cl.nombre)}" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
-                    ${renderDetalleCliente(cl)}
+                  <div style="text-align:right;">
+                    <div style="font-weight:700;color:var(--danger);font-size:13px;">${fmt(p.saldo)}</div>
+                    <div style="font-size:11px;color:var(--text-gray);">Vence: ${p.vencimiento}</div>
                   </div>
-                </div>`;
-            }).join('')
-        }
+                </div>`).join('')
+            }
+          </div>
+        </div>
       </div>
-      <div id="ec-pagination">${UI.paginacionHTML(pag, 'window._ecPagina', 'window._ecPorPagina')}</div>
     `;
 
     document.getElementById('ec-search')?.addEventListener('input', e => { busqueda = e.target.value; pagina = 1; render(); });
@@ -110,6 +273,37 @@ Router.register('estado-cuenta', async (view) => {
 
   window._ecPagina = (n) => { pagina = n; render(); };
   window._ecPorPagina = (n) => { porPagina = parseInt(n); pagina = 1; render(); };
+  window._ecFiltroEstado = (v) => { filtroEstado = v; pagina = 1; render(); };
+  window._ecFecha = (cual, valor) => {
+    if (cual === 'clear') { fechaDesde = ''; fechaHasta = ''; }
+    else if (cual === 'desde') fechaDesde = valor;
+    else if (cual === 'hasta') fechaHasta = valor;
+    pagina = 1;
+    render();
+  };
+
+  // Abre el panel de detalle de un cliente (proyectos, abonos, editar/eliminar)
+  // en un modal, en vez de expandir la fila como antes.
+  window._verDetalleClienteEC = async (nombre) => {
+    const clientes = await buildClientData();
+    const cl = clientes.find(c => c.nombre === nombre);
+    if (!cl) { UI.toast('Cliente no encontrado', 'error'); return; }
+    clienteDetalleAbierto = nombre;
+    document.getElementById('ec-detalle-titulo').textContent = nombre;
+    document.getElementById('ec-detalle-body').innerHTML = renderDetalleCliente(cl);
+    UI.openModal('modal-detalle-cliente-ec');
+  };
+
+  window._cerrarDetalleClienteEC = () => {
+    clienteDetalleAbierto = null;
+    UI.closeModal('modal-detalle-cliente-ec');
+  };
+
+  // Si el panel de detalle está abierto cuando se registra un pago o se
+  // edita/elimina un cobro, lo refresca para no dejarlo con datos viejos.
+  async function refrescarDetalleSiAbierto() {
+    if (clienteDetalleAbierto) await window._verDetalleClienteEC(clienteDetalleAbierto);
+  }
 
   function renderDetalleCliente(cl) {
     const saldoTotal = cl.totalFacturado - cl.totalAbonado;
@@ -131,22 +325,26 @@ Router.register('estado-cuenta', async (view) => {
           <tbody>
             ${cl.cobros.map(c => {
               const saldo = c.total - (c.abonadoReal || 0);
-              const st    = saldo <= 0.01 ? 'badge-success' : 'badge-amber';
-              return `<tr>
-                <td><strong>${c.factura||'—'}</strong></td>
+              const esCancelada = c.estado === 'Cancelada';
+              const st  = esCancelada ? 'badge-gray' : (saldo <= 0.01 ? 'badge-success' : 'badge-amber');
+              const lbl = esCancelada ? 'Cancelada' : (saldo <= 0.01 ? 'Pagado' : 'Pendiente');
+              return `<tr${esCancelada ? ' style="opacity:.65;"' : ''}>
+                <td><strong>${c.factura||'—'}</strong>${c.virtual ? '<div style="font-size:10px;color:var(--text-gray);">Desde cotización</div>' : ''}</td>
                 <td>${c.notas||'—'}${c.nota ? `<div style="font-size:11px;color:var(--amber);margin-top:2px;">${c.nota}</div>` : ''}</td>
                 <td>${(typeof fmtTotal === 'function' ? fmtTotal : fmt)(c.total||0)}</td>
                 <td style="color:var(--success);">${fmt(c.abonadoReal||0)}</td>
-                <td style="font-weight:700;color:${saldo>0?'var(--danger)':'var(--success)'};">${fmt(saldo)}</td>
-                <td><span class="badge ${st}">${saldo<=0.01?'Pagado':'Pendiente'}</span></td>
+                <td style="font-weight:700;color:${esCancelada?'var(--text-gray)':(saldo>0?'var(--danger)':'var(--success)')};">${esCancelada?'—':fmt(saldo)}</td>
+                <td><span class="badge ${st}">${lbl}</span></td>
                 <td>
-                  <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                    <button class="btn btn-sm btn-primary" onclick="abrirModalPagoEC('${c.id}','${(c.clienteNombre||'').replace(/'/g,"\\'")}','${fmt(saldo)}')">
-                      + Pago
-                    </button>
-                    <button class="btn btn-sm btn-outline" title="Editar" onclick="editarCobroEC('${c.id}')">${UI.icons.edit}</button>
-                    <button class="btn btn-sm btn-outline" style="color:var(--danger);" title="Eliminar" onclick="eliminarCobroEC('${c.id}','${(c.factura||c.clienteNombre||'este registro').replace(/'/g,"\\'")}')">${UI.icons.trash}</button>
-                  </div>
+                  ${c.virtual
+                    ? `<button class="btn btn-sm btn-outline" onclick="Router.go('ver-cotizacion',{id:'${c.cotizacionId}'})">${UI.icons.eye} Ver cotización</button>`
+                    : `<div style="display:flex;gap:4px;flex-wrap:wrap;">
+                        <button class="btn btn-sm btn-primary" onclick="abrirModalPagoEC('${c.id}','${(c.clienteNombre||'').replace(/'/g,"\\'")}','${fmt(saldo)}')">
+                          + Pago
+                        </button>
+                        <button class="btn btn-sm btn-outline" title="Editar" onclick="editarCobroEC('${c.id}')">${UI.icons.edit}</button>
+                        <button class="btn btn-sm btn-outline" style="color:var(--danger);" title="Eliminar" onclick="eliminarCobroEC('${c.id}','${(c.factura||c.clienteNombre||'este registro').replace(/'/g,"\\'")}')">${UI.icons.trash}</button>
+                      </div>`}
                 </td>
               </tr>`;
             }).join('')}
@@ -197,15 +395,6 @@ Router.register('estado-cuenta', async (view) => {
     `;
   }
 
-  function slugify(str) {
-    return str.toLowerCase().replace(/[^a-z0-9]/g, '_');
-  }
-
-  window.toggleCliente = (nombre) => {
-    const el = document.getElementById(`detalle-${slugify(nombre)}`);
-    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
-  };
-
   window.abrirModalPagoEC = (cobroId, nombre, saldo) => {
     document.getElementById('pago-cobro-id-ec').value = cobroId;
     document.getElementById('pago-nombre-ec').textContent = nombre;
@@ -228,6 +417,7 @@ Router.register('estado-cuenta', async (view) => {
     UI.closeModal('modal-pago-ec');
     UI.toast(`Abono de ${fmt(monto)} registrado`, 'success');
     await render();
+    await refrescarDetalleSiAbierto();
   };
 
   // Deja el modal listo para crear un cobro nuevo (limpia el modo edición
@@ -265,6 +455,7 @@ Router.register('estado-cuenta', async (view) => {
     await DB.deleteCobro(id);
     UI.toast('Registro eliminado', 'success');
     await render();
+    await refrescarDetalleSiAbierto();
   };
 
   window.guardarNuevoCobroEC = async () => {
@@ -311,6 +502,7 @@ Router.register('estado-cuenta', async (view) => {
 
     UI.closeModal('modal-nuevo-cobro-ec');
     await render();
+    await refrescarDetalleSiAbierto();
   };
 
   /* ── PDF Estado de Cuenta ─────────────────────────────── */
@@ -687,6 +879,17 @@ Router.register('estado-cuenta', async (view) => {
       </div>
     </div>
     <div id="ec-content"></div>
+
+    <!-- Modal detalle de cliente -->
+    <div class="modal-overlay" id="modal-detalle-cliente-ec">
+      <div class="modal" style="max-width:900px;width:100%;">
+        <div class="modal-header">
+          <div class="modal-title" id="ec-detalle-titulo">Cliente</div>
+          <button class="modal-close" onclick="window._cerrarDetalleClienteEC()">${UI.icons.x}</button>
+        </div>
+        <div class="modal-body" id="ec-detalle-body"></div>
+      </div>
+    </div>
 
     <!-- Modal pago EC -->
     <div class="modal-overlay" id="modal-pago-ec">
