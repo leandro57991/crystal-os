@@ -135,7 +135,7 @@ Router.register('estado-cuenta', async (view) => {
               return `<tr>
                 <td><strong>${c.factura||'—'}</strong></td>
                 <td>${c.notas||'—'}${c.nota ? `<div style="font-size:11px;color:var(--amber);margin-top:2px;">${c.nota}</div>` : ''}</td>
-                <td>${fmt(c.total||0)}</td>
+                <td>${(typeof fmtTotal === 'function' ? fmtTotal : fmt)(c.total||0)}</td>
                 <td style="color:var(--success);">${fmt(c.abonadoReal||0)}</td>
                 <td style="font-weight:700;color:${saldo>0?'var(--danger)':'var(--success)'};">${fmt(saldo)}</td>
                 <td><span class="badge ${st}">${saldo<=0.01?'Pagado':'Pendiente'}</span></td>
@@ -468,7 +468,7 @@ Router.register('estado-cuenta', async (view) => {
         return [
           c.factura || '—',
           c.notas || '—',
-          fmt(c.total || 0),
+          (typeof fmtTotal === 'function' ? fmtTotal : fmt)(c.total || 0),
           fmt(c.abonadoReal || 0),
           fmt(saldo),
           saldo <= 0.01 ? 'Pagado' : 'Pendiente',

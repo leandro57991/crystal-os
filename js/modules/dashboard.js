@@ -148,7 +148,7 @@ Router.register('dashboard', async (view) => {
               : ultimasCotiz.map(c => `<tr onclick="Router.go('ver-cotizacion',{id:'${c.id}'})" style="cursor:pointer;">
                   <td><strong>#${c.numero}</strong></td>
                   <td>${c.clienteNombre||'—'}</td>
-                  <td>${fmt(c.total||0)}</td>
+                  <td>${(typeof fmtTotal === 'function' ? fmtTotal : fmt)(c.total||0)}</td>
                   <td>${estadoBadge(c.estado)}</td>
                   <td style="color:var(--text-gray);">${c.fecha||'—'}</td>
                 </tr>`).join('')

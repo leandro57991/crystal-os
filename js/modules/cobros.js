@@ -127,7 +127,7 @@ Router.register('cobros', async (view) => {
           return `<tr>
             <td><strong>${c.clienteNombre||'—'}</strong>${c.telefono ? `<div style="font-size:11px;color:var(--text-gray);">${c.telefono}</div>` : ''}</td>
             <td>${c.factura||'—'}</td>
-            <td>${fmt(c.total||0)}</td>
+            <td>${(typeof fmtTotal === 'function' ? fmtTotal : fmt)(c.total||0)}</td>
             <td style="color:var(--success);">${fmt(c.pagado||0)}</td>
             <td style="font-weight:600;">${fmt(c.saldo||0)}</td>
             <td style="color:var(--text-gray);">${c.vencimiento||'—'}</td>
